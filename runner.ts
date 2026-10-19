@@ -54,6 +54,12 @@ export type RunOptions = {
   label?: string;
 };
 
+/** Read-only snapshots in flight, removed if we exit early (Ctrl+C, a fatal error). */
+const liveSnapshots = new Map<string, string>();
+process.on("exit", () => {
+  for (const [worktree, repoRoot] of liveSnapshots) removeWorktree(repoRoot, worktree);
+});
+
 export function newId(prefix: string): string {
   const now = new Date();
   const stamp = now.toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
@@ -68,18 +74,30 @@ export async function runDelegate(options: RunOptions, config: Config): Promise<
   writeFileSync(join(runDir, "brief.md"), options.brief);
 
   let ws: Workspace;
-  if (options.noRepo) {
-    if (mode === "write") throw new Error("--no-repo is only for read-only work.");
-    const empty = join(runDir, "empty");
-    mkdirSync(empty, { recursive: true });
-    ws = { dir: empty, kind: "in-place", notes: [] };
-  } else {
-    ws = prepareWorkspace({
-      cwd: options.cwd, mode, inPlace: !!options.inPlace, id, dataDir: config.dataDir,
-      linkDependencies: mode === "read" || options.provider.sandboxesWrites,
-      enforcesReadOnly: options.provider.enforcesReadOnly,
-    });
+  try {
+    if (options.noRepo) {
+      if (mode === "write") throw new Error("--no-repo is only for read-only work.");
+      const empty = join(runDir, "empty");
+      mkdirSync(empty, { recursive: true });
+      ws = { dir: empty, kind: "in-place", notes: [] };
+    } else {
+      ws = prepareWorkspace({
+        cwd: options.cwd, mode, inPlace: !!options.inPlace, id, dataDir: config.dataDir,
+        linkDependencies: mode === "read" || options.provider.sandboxesWrites,
+        enforcesReadOnly: options.provider.enforcesReadOnly,
+      });
+    }
+  } catch (e) {
+    // Report setup problems as a failed run rather than throwing, so a consensus
+    // panel carries on without this panellist and there's always a status.json.
+    const record: RunRecord = {
+      id, provider: options.provider.id, kind: options.kind, mode, status: "failed", error: (e as Error).message,
+      cwd: options.cwd, workspace: "in-place", notes: [], exitCode: null, durationMs: 0, startedAt: new Date().toISOString(), runDir,
+    };
+    writeFileSync(join(runDir, "status.json"), JSON.stringify(record, null, 2));
+    return record;
   }
+  if (mode === "read" && ws.worktree && ws.repoRoot) liveSnapshots.set(ws.worktree, ws.repoRoot);
 
   const promptFile = join(runDir, "prompt.md");
   const outputFile = join(runDir, "output.md");
@@ -138,7 +156,10 @@ export async function runDelegate(options: RunOptions, config: Config): Promise<
     } catch (e) {
       record.notes.push(`Couldn't read the delegate's changes: ${(e as Error).message}`);
     }
-    if (mode === "read") removeWorktree(ws.repoRoot, ws.worktree);
+    if (mode === "read") {
+      removeWorktree(ws.repoRoot, ws.worktree);
+      liveSnapshots.delete(ws.worktree);
+    }
   }
 
   writeFileSync(join(runDir, "status.json"), JSON.stringify(record, null, 2));

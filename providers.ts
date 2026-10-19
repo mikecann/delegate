@@ -63,11 +63,14 @@ export function firstJsonObject(text: string): any | null {
   try { return JSON.parse(text.slice(start, end + 1)); } catch { return null; }
 }
 
-/** Caches build tools write to, which Codex's write sandbox otherwise blocks. */
+/**
+ * Build caches Codex's write sandbox otherwise blocks, which breaks Swift and
+ * clang builds. Only these specific tools' caches, never all of ~/Library/Caches.
+ */
+const CODEX_WRITABLE_CACHES = [".cache/clang", "Library/Caches/org.swift.swiftpm", ".bun/install/cache", ".npm/_cacache"];
+
 function writableCaches(): string[] {
-  return [".cache", "Library/Caches", ".bun/install/cache", ".npm"]
-    .map((rel) => join(home, rel))
-    .filter((path) => existsSync(path));
+  return CODEX_WRITABLE_CACHES.map((rel) => join(home, rel)).filter((path) => existsSync(path));
 }
 
 export const codex: Provider = {
@@ -190,14 +193,16 @@ const CLAUDE_READ_TOOLS = [
   "Bash(ls *)", "Bash(rg *)",
 ];
 
-// Write mode allows edits plus common build and test commands. Everything else
-// is denied, since nobody is there to approve it.
-const CLAUDE_WRITE_TOOLS = [
-  ...CLAUDE_READ_TOOLS, "Edit", "Write", "NotebookEdit",
-  "Bash(bun *)", "Bash(bunx *)", "Bash(npm *)", "Bash(npx *)", "Bash(pnpm *)", "Bash(yarn *)", "Bash(node *)",
-  "Bash(tsc *)", "Bash(python3 *)", "Bash(pytest *)", "Bash(swift *)", "Bash(cargo *)", "Bash(go *)", "Bash(make *)",
-  "Bash(mkdir *)", "Bash(git add *)", "Bash(git mv *)", "Bash(git rm *)",
-];
+// Write mode adds edits inside the working directory and any shell command.
+// Claude Code's own sandbox keeps those commands from writing outside it.
+const CLAUDE_WRITE_TOOLS = [...CLAUDE_READ_TOOLS, "Edit(./**)", "Write(./**)", "NotebookEdit(./**)", "Bash"];
+
+/**
+ * Claude Code's OS sandbox for Bash: writes only inside the working directory
+ * (and temp), no way to ask for an unsandboxed command. Checked live: it blocks
+ * `echo > ~/x` and `git diff --output=~/x`, which an allow list alone doesn't.
+ */
+const CLAUDE_SANDBOX = JSON.stringify({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false } });
 
 /** Find the CLAUDE_CONFIG_DIR whose login belongs to this email. */
 export function findClaudeConfigDir(email: string, config: Config): string | null {
@@ -221,9 +226,10 @@ export function claudeAccount(id: string, email: string, config: Config, employe
     lab: "anthropic",
     label: `Claude (${email})`,
     employerOnly,
-    // Read-only is an allow list of read tools. Writes have no OS sandbox, only an allow list.
-    enforcesReadOnly: true,
-    sandboxesWrites: false,
+    // `git diff --no-index --output=x` can still write inside the working directory,
+    // so outside git it needs a snapshot or --in-place like Grok and Muse.
+    enforcesReadOnly: false,
+    sandboxesWrites: true,
     unavailable() {
       if (!which("claude")) return "claude isn't installed";
       if (!configDir()) return `no Claude login for ${email} (add it in Token Stats with Add account)`;
@@ -236,6 +242,7 @@ export function claudeAccount(id: string, email: string, config: Config, employe
         args: [
           "-p", "--output-format", "json", "--no-session-persistence",
           "--permission-mode", "dontAsk", "--allowedTools", tools.join(","),
+          "--settings", CLAUDE_SANDBOX,
           "--append-system-prompt", DELEGATE_SYSTEM_NOTE,
           "--model", ctx.model ?? (ctx.top ? "claude-fable-5-1" : "sonnet"),
           ...(ctx.effort ? ["--effort", ctx.effort] : []),

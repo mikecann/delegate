@@ -38,8 +38,8 @@ EOF
 
 - `--kind ask | review | research | implement`. Everything except `implement` is read-only.
 - Read-only runs get a throwaway copy of the repo that includes the user's uncommitted and untracked changes. Your working tree is never touched, even when a CLI ignores its read-only flags (Grok and Muse do).
-- `implement` (or `--write`) runs in its own worktree on a `delegate/<id>` branch and never commits. Review with `delegate diff <id>`, bring it in with `delegate apply <id>`, then `delegate clean <id>`. Commit anything you want the delegate to build on first, or know that it gets your uncommitted changes as its starting point.
-- `--no-repo` for pure questions that don't need the code. `--in-place` skips the snapshot for read-only work in huge repos.
+- `implement` (or `--write`) runs in its own worktree on a `delegate/<id>` branch and never commits. Review with `delegate diff <id>`, bring it in with `delegate apply <id>` (add `--3way` if it doesn't apply cleanly), then `delegate clean <id>`. Commit anything you want the delegate to build on first, or know that it gets your uncommitted changes as its starting point.
+- `--no-repo` for pure questions that don't need the code. `--in-place` skips the snapshot for read-only work in huge repos, or in a folder that isn't a git repo.
 - `--timeout 30m` (defaults: 20m read, 45m write). `--model` and `--effort` pass through.
 - The answer comes back capped at 80 lines. `delegate show <id>` prints the full answer, and everything (prompt, raw logs, status.json) is under `~/.delegate/runs/<id>/`.
 

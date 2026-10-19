@@ -13,6 +13,8 @@ describe("employer policy", () => {
   test("a get-convex remote is employer work", () => {
     expect(isEmployerWork("/tmp", config, ["https://github.com/get-convex/stack.git"])).toBe(true);
     expect(isEmployerWork("/tmp", config, ["git@github.com:get-convex/convex.git"])).toBe(true);
+    expect(isEmployerWork("/tmp", config, ["ssh://git@ssh.github.com:443/get-convex/backend.git"])).toBe(true);
+    expect(isEmployerWork("/tmp", config, ["ssh://git@github.com:443/get-convex/backend.git"])).toBe(true);
   });
 
   test("Mike's own repos about Convex aren't", () => {

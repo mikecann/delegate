@@ -58,7 +58,7 @@ delegate consensus --no-repo "Redis or Postgres for sessions, given ...?"
 ```
 
 - `--kind` is `ask`, `review`, `research` or `implement`. Only `implement` (or `--write`) can change files.
-- After an implement job: `delegate diff <id>` to look, `delegate apply <id>` to bring it into your repo, `delegate clean <id>` to remove its worktree and branch.
+- After an implement job: `delegate diff <id>` to look, `delegate apply <id>` to bring it into your repo, `delegate clean <id>` to remove its worktree and branch. `apply` only changes anything if the patch applies cleanly. Add `--3way` to merge it anyway, which can leave conflict markers.
 - `delegate show <id>` prints the full answer. Everything else (the prompt, raw logs, status) is in `~/.delegate/runs/<id>/`.
 - `--no-repo` for questions that don't need the code, `--in-place` to skip the snapshot in a huge repo, `--timeout 30m`, `--model`, `--effort`.
 - For consensus: `--deep` adds a second round where each one answers the strongest argument against them, `--devil` gets one to argue the other side, `--all` puts everyone on the panel and skips the chair.
@@ -72,7 +72,7 @@ The skill in `skill/SKILL.md` is what tells Claude which account suits which job
 |---|---|
 | Providers | `codex exec`, `grok --prompt-file`, `muse exec` and `claude -p` with `CLAUDE_CONFIG_DIR`, each with its own flags for headless runs. Every brief starts with a note saying it's running unattended for another agent, because otherwise they happily answer as if you're there. |
 | Read-only jobs | `git worktree add --detach` at HEAD, your uncommitted diff and untracked files copied in and committed as a baseline. Anything the delegate changes is reported and thrown away with the worktree. |
-| Write jobs | Same, on a `delegate/<id>` branch. Codex, Grok and Muse run in their write sandboxes (which block your home folder but allow `/tmp`). Claude gets edits plus an allow list of build and test commands. |
+| Write jobs | Same, on a `delegate/<id>` branch. Every CLI runs in its own OS sandbox, which blocks writes outside the worktree (temp folders are allowed, for builds). For Claude that's Claude Code's own sandbox, turned on with `--settings`. Your `node_modules` and `.venv` are linked in so builds and tests work, and the sandboxes stop anything writing through the link. |
 | Processes | Each job runs in its own process group with output going straight to files. On timeout the group gets SIGTERM, then SIGKILL. |
 | Limits | Token Stats' `limits.json`, or `token-stats limits --json`, cached in `~/.delegate/limits-cache.json`. The hooks only read files so they stay fast. |
 | Hooks | `SessionStart` adds one line of budget. `PreToolUse` on `Agent`, `Task` and `Workflow` adds a reminder, or blocks below the thresholds. A sub-agent whose description starts with `local:` always gets through, for jobs that need the session's own tools like the browser. |

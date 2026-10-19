@@ -51,6 +51,11 @@ function onParentSignal(signal: NodeJS.Signals) {
   }, 2_000).unref();
 }
 
+// However we exit (a fatal error, process.exit in a command), take the delegates with us.
+process.on("exit", () => {
+  for (const child of live) signalGroup(child.pid, "SIGKILL");
+});
+
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.on(signal, () => onParentSignal(signal));
 }

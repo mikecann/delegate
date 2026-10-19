@@ -81,7 +81,9 @@ describe("runDelegate", () => {
   });
 
   test("write runs outside a git repo are refused", async () => {
-    await expect(runDelegate({ provider: fakeProvider("echo"), kind: "implement", brief: "x", cwd: tempDir() }, testConfig())).rejects.toThrow("isn't a git repo");
+    const record = await runDelegate({ provider: fakeProvider("echo"), kind: "implement", brief: "x", cwd: tempDir() }, testConfig());
+    expect(record.status).toBe("failed");
+    expect(record.error).toContain("isn't a git repo");
   });
 
   test("a repo with no commits runs read-only work in place and refuses write work", async () => {
@@ -91,7 +93,7 @@ describe("runDelegate", () => {
     const record = await runDelegate({ provider: fakeProvider("cat a.txt"), kind: "ask", brief: "x", cwd: repo }, testConfig());
     expect(record.workspace).toBe("in-place");
     expect(record.notes[0]).toContain("no commits");
-    await expect(runDelegate({ provider: fakeProvider("echo"), kind: "implement", brief: "x", cwd: repo }, testConfig())).rejects.toThrow("no commits");
+    expect((await runDelegate({ provider: fakeProvider("echo"), kind: "implement", brief: "x", cwd: repo }, testConfig())).error).toContain("no commits");
   });
 
   test("--no-repo runs in an empty folder", async () => {
@@ -135,7 +137,7 @@ describe("runDelegate", () => {
 
   test("outside git, providers without real read-only need --in-place", async () => {
     const loose = { ...fakeProvider("echo hi"), enforcesReadOnly: false };
-    await expect(runDelegate({ provider: loose, kind: "review", brief: "x", cwd: tempDir() }, testConfig())).rejects.toThrow("--in-place");
+    expect((await runDelegate({ provider: loose, kind: "review", brief: "x", cwd: tempDir() }, testConfig())).error).toContain("--in-place");
     const ok = await runDelegate({ provider: loose, kind: "review", brief: "x", cwd: tempDir(), inPlace: true }, testConfig());
     expect(ok.status).toBe("ok");
   });
@@ -165,7 +167,20 @@ describe("runDelegate", () => {
     // so make the worktrees folder unwritable after the worktree is created by pointing dataDir at a file.
     const blocked = testConfig();
     writeFileSync(join(blocked.dataDir + "-file"), "");
-    await expect(runDelegate({ provider: fakeProvider("echo"), kind: "ask", brief: "x", cwd: repo }, { ...blocked, dataDir: blocked.dataDir + "-file" })).rejects.toThrow();
+    const failed = await runDelegate({ provider: fakeProvider("echo"), kind: "ask", brief: "x", cwd: repo }, { ...blocked, dataDir: blocked.dataDir + "-file" }).catch((e) => e);
+    expect(failed instanceof Error || failed.status === "failed").toBe(true);
     expect(git(repo, "worktree", "list").trim().split("\n")).toHaveLength(1);
+  });
+
+  test("apply refuses a patch that conflicts, leaving the tree alone, and --3way merges it", async () => {
+    const repo = tempRepo();
+    const record = await runDelegate({ provider: fakeProvider('echo delegate > a.txt; echo ok'), kind: "implement", brief: "x", cwd: repo }, testConfig());
+    writeFileSync(join(repo, "a.txt"), "mine\n");
+    const patch = readFileSync(join(record.runDir, "changes.patch"), "utf8");
+    const refused = applyPatch(repo, patch);
+    expect(refused.ok).toBe(false);
+    expect(refused.message).toContain("--3way");
+    expect(readFileSync(join(repo, "a.txt"), "utf8")).toBe("mine\n");
+    expect(git(repo, "status", "--porcelain")).not.toContain("UU");
   });
 });

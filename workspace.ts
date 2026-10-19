@@ -149,12 +149,28 @@ export function removeWorktree(repoRoot: string, worktree: string, branch?: stri
   if (branch) git(repoRoot, ["branch", "-D", branch]);
 }
 
-/** Apply a delegate's patch to the caller's repo, falling back to a 3-way merge. */
-export function applyPatch(repoRoot: string, patch: string): { ok: boolean; message: string } {
+/**
+ * Apply a delegate's patch to the caller's repo. It only applies if it applies
+ * cleanly, unless threeWay is set, which merges and can leave conflict markers.
+ */
+export function applyPatch(repoRoot: string, patch: string, threeWay = false): { ok: boolean; message: string } {
   if (!patch.trim()) return { ok: true, message: "Nothing to apply." };
-  const direct = git(repoRoot, ["apply", "--binary", "--whitespace=nowarn"], patch);
-  if (direct.ok) return { ok: true, message: "Applied cleanly." };
-  const threeWay = git(repoRoot, ["apply", "--binary", "--3way", "--whitespace=nowarn"], patch);
-  if (threeWay.ok) return { ok: true, message: "Applied with a 3-way merge. Check `git status` for conflicts." };
-  return { ok: false, message: threeWay.stderr.trim() || direct.stderr.trim() };
+  if (threeWay) {
+    const merged = git(repoRoot, ["apply", "--binary", "--3way", "--whitespace=nowarn"], patch);
+    return merged.ok
+      ? { ok: true, message: "Applied with a 3-way merge." }
+      : { ok: false, message: `${merged.stderr.trim()}\nResolve the conflict markers, then \`git add\` the files.` };
+  }
+  const check = git(repoRoot, ["apply", "--check", "--binary", "--whitespace=nowarn"], patch);
+  if (!check.ok) {
+    return { ok: false, message: `It doesn't apply cleanly, so nothing was changed:\n${check.stderr.trim()}\nRun it again with --3way to merge it, which may leave conflict markers.` };
+  }
+  const applied = git(repoRoot, ["apply", "--binary", "--whitespace=nowarn"], patch);
+  return applied.ok ? { ok: true, message: "Applied cleanly." } : { ok: false, message: applied.stderr.trim() };
+}
+
+/** The repo a worktree belongs to, for cleaning up worktrees whose run record is gone. */
+export function repoOfWorktree(worktree: string): string | null {
+  const result = git(worktree, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  return result.ok ? dirname(result.stdout.trim()) : null;
 }

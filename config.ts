@@ -49,7 +49,7 @@ export function defaultConfig(): Config {
     },
     employer: {
       name: "Convex",
-      remotes: ["github\\.com[:/]get-convex/"],
+      remotes: ["github\\.com(?::\\d+)?[:/]get-convex/"],
       paths: ["~/dev/convex/convex-videos"],
       allow: ["claude-convex"],
     },

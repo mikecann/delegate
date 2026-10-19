@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { configPath, loadConfig, type Config } from "./config.ts";
@@ -11,7 +11,7 @@ import { allowedProviderIds, isEmployerWork, policyRefusal } from "./policy.ts";
 import { allProviders, providerById, type Kind } from "./providers.ts";
 import { exitCodeFor, formatRun, runDelegate, type RunRecord } from "./runner.ts";
 import { parseDurationMs } from "./text.ts";
-import { applyPatch, removeWorktree } from "./workspace.ts";
+import { applyPatch, removeWorktree, repoOfWorktree } from "./workspace.ts";
 
 const KINDS: Kind[] = ["ask", "review", "research", "implement"];
 
@@ -25,7 +25,7 @@ const HELP = `delegate: hand work to your other AI subscriptions
   delegate limits [--refresh] plan limits from Token Stats
   delegate show <id>          full answer of a run
   delegate diff <id>          patch from a --write / implement run
-  delegate apply <id>         apply that patch to the repo it came from
+  delegate apply <id> [--3way] apply that patch to the repo it came from
   delegate clean <id>|--all   remove a write run's worktree and branch
   delegate hook pre-tool-use|session-start|pause [1h]|resume|status
   delegate install-hooks | uninstall-hooks
@@ -153,6 +153,10 @@ function cmdLimits(argv: string[], config: Config) {
 }
 
 function findRun(id: string, config: Config): RunRecord {
+  return tryFindRun(id, config) ?? fail(`no run called ${id}`);
+}
+
+function tryFindRun(id: string, config: Config): RunRecord | null {
   const roots = [join(config.dataDir, "runs")];
   const consensus = join(config.dataDir, "consensus");
   if (existsSync(consensus)) {
@@ -162,18 +166,21 @@ function findRun(id: string, config: Config): RunRecord {
     const path = join(root, id, "status.json");
     if (existsSync(path)) return JSON.parse(readFileSync(path, "utf8"));
   }
-  fail(`no run called ${id}`);
+  return null;
 }
 
 function cmdClean(argv: string[], config: Config) {
   const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, strict: true, options: { all: { type: "boolean" } } });
-  const ids = values.all
-    ? readdirSync(join(config.dataDir, "runs")).filter((id) => existsSync(join(config.dataDir, "worktrees", id)))
-    : positionals;
-  if (!ids.length) fail("say which run to clean, or --all");
+  const worktrees = join(config.dataDir, "worktrees");
+  const ids = values.all ? (existsSync(worktrees) ? readdirSync(worktrees) : []) : positionals;
+  if (!ids.length) { console.log(values.all ? "Nothing to clean." : "Say which run to clean, or --all."); return; }
   for (const id of ids) {
-    const record = findRun(id, config);
-    if (record.repoRoot && record.worktree) removeWorktree(record.repoRoot, record.worktree, record.branch);
+    const record = tryFindRun(id, config);
+    const worktree = record?.worktree ?? join(worktrees, id);
+    // Worktrees left by an interrupted run have no record, so ask git which repo they belong to.
+    const repoRoot = record?.repoRoot ?? repoOfWorktree(worktree);
+    if (repoRoot) removeWorktree(repoRoot, worktree, record?.branch ?? `delegate/${id}`);
+    rmSync(worktree, { recursive: true, force: true });
     console.log(`cleaned ${id}`);
   }
 }
@@ -238,10 +245,11 @@ async function main() {
       return;
     }
     case "apply": {
-      const record = findRun(rest[0] ?? fail("apply needs a run id"), config);
+      const id = rest.find((a) => !a.startsWith("-")) ?? fail("apply needs a run id");
+      const record = findRun(id, config);
       const patch = join(record.runDir, "changes.patch");
       if (!record.repoRoot || !existsSync(patch) || !statSync(patch).size) fail("that run has no changes to apply");
-      const result = applyPatch(record.repoRoot, readFileSync(patch, "utf8"));
+      const result = applyPatch(record.repoRoot, readFileSync(patch, "utf8"), rest.includes("--3way"));
       console.log(result.message);
       process.exit(result.ok ? 0 : 1);
     }
