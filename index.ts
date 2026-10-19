@@ -2,7 +2,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import { loadConfig, type Config } from "./config.ts";
+import { configPath, loadConfig, type Config } from "./config.ts";
 import { formatConsensus, runConsensus } from "./consensus.ts";
 import { allowedWithHeadroom, isPaused, pausedUntil, pauseUntil, preToolUse, resume, sessionStart } from "./hooks.ts";
 import { installHooks, uninstallHooks } from "./install.ts";
@@ -212,7 +212,14 @@ async function cmdHook(argv: string[], config: Config) {
 
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
-  const config = loadConfig();
+  let config: Config;
+  try {
+    config = loadConfig();
+  } catch (e) {
+    // A broken config must never break a Claude Code session through the hooks.
+    if (command === "hook" && (rest[0] === "pre-tool-use" || rest[0] === "session-start")) process.exit(0);
+    fail(`couldn't read the config at ${configPath()}: ${(e as Error).message}`);
+  }
   switch (command) {
     case "run": return cmdRun(rest, config);
     case "consensus": return cmdConsensus(rest, config);

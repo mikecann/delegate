@@ -35,7 +35,7 @@ export function tempRepo(): string {
 /** A provider that runs a shell script instead of an AI CLI. */
 export function fakeProvider(script: string, id = "fake", lab: Provider["lab"] = "openai"): Provider {
   return {
-    id, lab, label: id,
+    id, lab, label: id, enforcesReadOnly: true, sandboxesWrites: true,
     unavailable: () => null,
     invocation: (ctx) => ({ command: "bash", args: ["-c", script], env: { PROMPT_FILE: ctx.promptFile, OUT_FILE: ctx.outputFile } }),
     parse: (stdout) => ({ text: stdout.trim(), error: stdout.trim() ? undefined : "nothing printed" }),

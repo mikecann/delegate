@@ -74,7 +74,11 @@ export async function runDelegate(options: RunOptions, config: Config): Promise<
     mkdirSync(empty, { recursive: true });
     ws = { dir: empty, kind: "in-place", notes: [] };
   } else {
-    ws = prepareWorkspace({ cwd: options.cwd, mode, inPlace: !!options.inPlace, id, dataDir: config.dataDir });
+    ws = prepareWorkspace({
+      cwd: options.cwd, mode, inPlace: !!options.inPlace, id, dataDir: config.dataDir,
+      linkDependencies: mode === "read" || options.provider.sandboxesWrites,
+      enforcesReadOnly: options.provider.enforcesReadOnly,
+    });
   }
 
   const promptFile = join(runDir, "prompt.md");

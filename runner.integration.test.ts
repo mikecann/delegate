@@ -84,6 +84,16 @@ describe("runDelegate", () => {
     await expect(runDelegate({ provider: fakeProvider("echo"), kind: "implement", brief: "x", cwd: tempDir() }, testConfig())).rejects.toThrow("isn't a git repo");
   });
 
+  test("a repo with no commits runs read-only work in place and refuses write work", async () => {
+    const repo = tempDir();
+    git(repo, "init", "-q");
+    writeFileSync(join(repo, "a.txt"), "x\n");
+    const record = await runDelegate({ provider: fakeProvider("cat a.txt"), kind: "ask", brief: "x", cwd: repo }, testConfig());
+    expect(record.workspace).toBe("in-place");
+    expect(record.notes[0]).toContain("no commits");
+    await expect(runDelegate({ provider: fakeProvider("echo"), kind: "implement", brief: "x", cwd: repo }, testConfig())).rejects.toThrow("no commits");
+  });
+
   test("--no-repo runs in an empty folder", async () => {
     const repo = tempRepo();
     const record = await runDelegate({ provider: fakeProvider("ls | wc -l"), kind: "ask", brief: "x", cwd: repo, noRepo: true }, testConfig());
@@ -102,5 +112,60 @@ describe("runDelegate", () => {
     const config = testConfig();
     const runs = await Promise.all([1, 2, 3, 4].map(() => runDelegate({ provider: fakeProvider("cat a.txt"), kind: "ask", brief: "x", cwd: repo }, config)));
     expect(runs.map((r) => r.status)).toEqual(["ok", "ok", "ok", "ok"]);
+  });
+
+  test("anything the delegate leaves running is killed when it exits", async () => {
+    const dir = tempDir();
+    const marker = join(dir, "orphan-survived");
+    const provider = fakeProvider(`(sleep 2; touch ${marker}) & echo started`);
+    const record = await runDelegate({ provider, kind: "ask", brief: "x", cwd: dir, inPlace: true }, testConfig());
+    expect(record.status).toBe("ok");
+    await Bun.sleep(2500);
+    expect(existsSync(marker)).toBe(false);
+  }, 15_000);
+
+  test("children that ignore SIGTERM still get killed", async () => {
+    const dir = tempDir();
+    const marker = join(dir, "stubborn-survived");
+    const provider = fakeProvider(`(trap "" TERM; sleep 3; touch ${marker}) & echo started`);
+    await runDelegate({ provider, kind: "ask", brief: "x", cwd: dir, inPlace: true }, testConfig());
+    await Bun.sleep(3500);
+    expect(existsSync(marker)).toBe(false);
+  }, 15_000);
+
+  test("outside git, providers without real read-only need --in-place", async () => {
+    const loose = { ...fakeProvider("echo hi"), enforcesReadOnly: false };
+    await expect(runDelegate({ provider: loose, kind: "review", brief: "x", cwd: tempDir() }, testConfig())).rejects.toThrow("--in-place");
+    const ok = await runDelegate({ provider: loose, kind: "review", brief: "x", cwd: tempDir(), inPlace: true }, testConfig());
+    expect(ok.status).toBe("ok");
+  });
+
+  test("dependencies aren't linked for write runs without a sandbox", async () => {
+    const repo = tempRepo();
+    writeFileSync(join(repo, ".gitignore"), "node_modules/\n");
+    git(repo, "add", "-A"); git(repo, "commit", "-qm", "ignore");
+    mkdirSync(join(repo, "node_modules"));
+    const unsandboxed = { ...fakeProvider("ls node_modules 2>&1 | head -1; echo done"), sandboxesWrites: false };
+    const record = await runDelegate({ provider: unsandboxed, kind: "implement", brief: "x", cwd: repo }, testConfig());
+    expect(readFileSync(join(record.runDir, "output.md"), "utf8")).toContain("No such file");
+    expect(record.notes.join(" ")).toContain("weren't linked");
+  });
+
+  test("repos that sign commits still snapshot, and failed snapshots don't leak worktrees", async () => {
+    const repo = tempRepo();
+    git(repo, "config", "commit.gpgsign", "true");
+    git(repo, "config", "gpg.program", "/nonexistent/gpg");
+    const config = testConfig();
+    const record = await runDelegate({ provider: fakeProvider("cat a.txt"), kind: "ask", brief: "x", cwd: repo }, config);
+    expect(record.status).toBe("ok");
+
+    git(repo, "config", "core.hooksPath", "/nonexistent");
+    writeFileSync(join(repo, "a.txt"), "changed\n");
+    // Force the baseline commit to fail: an index lock in the worktree area can't be set up portably,
+    // so make the worktrees folder unwritable after the worktree is created by pointing dataDir at a file.
+    const blocked = testConfig();
+    writeFileSync(join(blocked.dataDir + "-file"), "");
+    await expect(runDelegate({ provider: fakeProvider("echo"), kind: "ask", brief: "x", cwd: repo }, { ...blocked, dataDir: blocked.dataDir + "-file" })).rejects.toThrow();
+    expect(git(repo, "worktree", "list").trim().split("\n")).toHaveLength(1);
   });
 });

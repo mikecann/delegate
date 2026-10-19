@@ -27,6 +27,12 @@ describe("employer policy", () => {
     expect(isEmployerWork(root, withPath, [])).toBe(false);
   });
 
+  test("a worktree of an employer folder still counts, wherever the worktree lives", () => {
+    const root = tempDir();
+    const withPath = testConfig({ employer: { ...config.employer!, paths: [join(root, "work")] } });
+    expect(isEmployerWork("/somewhere/else/.delegate/worktrees/x", withPath, [], join(root, "work", "repo"))).toBe(true);
+  });
+
   test("employer work only goes to the allow list", () => {
     expect(allowedProviderIds("/tmp", config, providers, true)).toEqual(["claude-convex"]);
     expect(policyRefusal("codex", "/tmp", config, providers, true)).toContain("Convex work");

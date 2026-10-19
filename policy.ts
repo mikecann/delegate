@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import { resolve, sep } from "node:path";
+import { dirname, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { expandHome, type Config } from "./config.ts";
 
@@ -13,14 +13,21 @@ export function gitRemotes(cwd: string): string[] {
   return [...new Set(result.stdout.split("\n").map((line) => line.split(/\s+/)[1]).filter(Boolean))];
 }
 
-/** True when cwd is inside an employer folder or a repo with an employer remote. */
-export function isEmployerWork(cwd: string, config: Config, remotes = gitRemotes(cwd)): boolean {
+/** The main checkout of a repo, even when cwd is one of its linked worktrees. */
+export function mainCheckout(cwd: string): string | null {
+  const result = spawnSync("git", ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"], { encoding: "utf8" });
+  if (result.status !== 0) return null;
+  return dirname(result.stdout.trim());
+}
+
+/** True when cwd (or the repo it's a worktree of) is in an employer folder or has an employer remote. */
+export function isEmployerWork(cwd: string, config: Config, remotes = gitRemotes(cwd), checkout = mainCheckout(cwd)): boolean {
   const employer = config.employer;
   if (!employer) return false;
-  const here = real(cwd);
+  const places = [real(cwd), ...(checkout ? [real(checkout)] : [])];
   for (const path of employer.paths) {
     const root = real(expandHome(path));
-    if (here === root || here.startsWith(root + sep)) return true;
+    if (places.some((here) => here === root || here.startsWith(root + sep))) return true;
   }
   return employer.remotes.some((pattern) => {
     const regex = new RegExp(pattern, "i");

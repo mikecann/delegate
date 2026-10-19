@@ -49,11 +49,25 @@ export function repoRootOf(cwd: string): string | null {
  * snapshot that's thrown away; write work gets a `delegate/<id>` branch that
  * stays until `delegate clean`.
  */
-export function prepareWorkspace(options: { cwd: string; mode: "read" | "write"; inPlace: boolean; id: string; dataDir: string }): Workspace {
+export function prepareWorkspace(options: {
+  cwd: string; mode: "read" | "write"; inPlace: boolean; id: string; dataDir: string;
+  /** Link the caller's node_modules/.venv in. Only safe when the provider sandboxes writes. */
+  linkDependencies?: boolean;
+  /** The provider's read-only mode really stops writes, so running in place is safe. */
+  enforcesReadOnly?: boolean;
+}): Workspace {
   const repoRoot = repoRootOf(options.cwd);
   if (!repoRoot) {
     if (options.mode === "write") throw new Error(`${options.cwd} isn't a git repo, and write work needs one so its changes can be reviewed.`);
+    if (!options.inPlace && !options.enforcesReadOnly) {
+      throw new Error(`${options.cwd} isn't a git repo, so there's nothing to snapshot, and this provider's read-only mode doesn't reliably stop writes. ` +
+        "Pass --in-place to let it work on these files anyway, or --no-repo if it doesn't need them.");
+    }
     return { dir: options.cwd, kind: "in-place", notes: [] };
+  }
+  if (!git(repoRoot, ["rev-parse", "--verify", "--quiet", "HEAD"]).ok) {
+    if (options.mode === "write") throw new Error(`${repoRoot} has no commits yet. Make a first commit so the delegate's changes can be reviewed.`);
+    return { dir: options.cwd, kind: "in-place", repoRoot, notes: ["This repo has no commits yet, so the delegate ran in your working tree."] };
   }
   if (options.inPlace) {
     if (options.mode === "write") throw new Error("--in-place is only for read-only work. Write work always gets its own worktree.");
@@ -66,40 +80,53 @@ export function prepareWorkspace(options: { cwd: string; mode: "read" | "write";
   mustGit(repoRoot, ["worktree", "add", "--quiet", ...(branch ? ["-b", branch] : ["--detach"]), worktree, "HEAD"]);
 
   const notes: string[] = [];
-  const patch = mustGit(repoRoot, ["diff", "HEAD", "--binary"]);
-  if (patch.trim()) {
-    const applied = git(worktree, ["apply", "--binary", "--whitespace=nowarn"], patch);
-    if (!applied.ok) notes.push(`Couldn't copy your uncommitted changes into the snapshot, so it's at HEAD: ${applied.stderr.trim()}`);
-  }
-  const untracked = mustGit(repoRoot, ["ls-files", "--others", "--exclude-standard", "-z"]).split("\0").filter(Boolean);
-  let skipped = 0;
-  for (const file of untracked) {
-    const from = join(repoRoot, file);
-    const to = join(worktree, file);
-    try {
-      const stat = lstatSync(from);
-      if (stat.size > MAX_UNTRACKED_BYTES) { skipped++; continue; }
-      mkdirSync(dirname(to), { recursive: true });
-      if (stat.isSymbolicLink()) symlinkSync(readlinkSync(from), to);
-      else copyFileSync(from, to);
-    } catch { skipped++; }
-  }
-  if (skipped) notes.push(`Left ${skipped} untracked file(s) out of the snapshot (over 20 MB or unreadable).`);
-
-  mustGit(worktree, ["add", "-A"]);
-  mustGit(worktree, ["-c", "user.name=delegate", "-c", "user.email=delegate@localhost", "commit", "--quiet", "--no-verify", "--allow-empty", "-m", "delegate baseline"]);
-  const baseline = mustGit(worktree, ["rev-parse", "HEAD"]).trim();
-
+  let baseline: string;
   const linked: string[] = [];
-  for (const name of LINKED_DEPENDENCY_DIRS) {
-    const from = join(repoRoot, name);
-    const to = join(worktree, name);
-    if (existsSync(from) && !existsSync(to)) {
-      try { symlinkSync(from, to); linked.push(name); } catch {}
+  try {
+    const patch = mustGit(repoRoot, ["diff", "HEAD", "--binary"]);
+    if (patch.trim()) {
+      const applied = git(worktree, ["apply", "--binary", "--whitespace=nowarn"], patch);
+      if (!applied.ok) notes.push(`Couldn't copy your uncommitted changes into the snapshot, so it's at HEAD: ${applied.stderr.trim()}`);
     }
+    const untracked = mustGit(repoRoot, ["ls-files", "--others", "--exclude-standard", "-z"]).split("\0").filter(Boolean);
+    let skipped = 0;
+    for (const file of untracked) {
+      const from = join(repoRoot, file);
+      const to = join(worktree, file);
+      try {
+        const stat = lstatSync(from);
+        if (stat.size > MAX_UNTRACKED_BYTES) { skipped++; continue; }
+        mkdirSync(dirname(to), { recursive: true });
+        if (stat.isSymbolicLink()) symlinkSync(readlinkSync(from), to);
+        else copyFileSync(from, to);
+      } catch { skipped++; }
+    }
+    if (skipped) notes.push(`Left ${skipped} untracked file(s) out of the snapshot (over 20 MB or unreadable).`);
+    if (existsSync(join(repoRoot, ".gitmodules"))) notes.push("This repo has submodules, and they aren't included in the snapshot.");
+
+    mustGit(worktree, ["add", "-A"]);
+    mustGit(worktree, [
+      "-c", "user.name=delegate", "-c", "user.email=delegate@localhost", "-c", "commit.gpgsign=false",
+      "commit", "--quiet", "--no-verify", "--allow-empty", "-m", "delegate baseline",
+    ]);
+    baseline = mustGit(worktree, ["rev-parse", "HEAD"]).trim();
+
+    if (options.linkDependencies) {
+      for (const name of LINKED_DEPENDENCY_DIRS) {
+        const from = join(repoRoot, name);
+        const to = join(worktree, name);
+        if (existsSync(from) && !existsSync(to)) {
+          try { symlinkSync(from, to); linked.push(name); } catch {}
+        }
+      }
+    } else if (options.mode === "write" && LINKED_DEPENDENCY_DIRS.some((name) => existsSync(join(repoRoot, name)))) {
+      notes.push("Your node_modules/.venv weren't linked in, because this provider's writes aren't sandboxed. It can install its own in the worktree.");
+    }
+  } catch (error) {
+    removeWorktree(repoRoot, worktree, branch);
+    throw error;
   }
 
-  // git reports the real path (e.g. /private/var on macOS), so compare like with like.
   const sub = relative(realpathSync(repoRoot), realpathSync(options.cwd));
   const dir = sub && !sub.startsWith("..") ? join(worktree, sub) : worktree;
   return { dir: existsSync(dir) ? dir : worktree, kind: branch ? "worktree" : "snapshot", repoRoot, worktree, baseline, branch, linked, notes };

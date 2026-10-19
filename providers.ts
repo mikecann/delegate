@@ -39,6 +39,10 @@ export type Provider = {
   lab: Lab;
   label: string;
   employerOnly?: boolean;
+  /** Its read-only mode really stops writes (checked live), so it can run in place outside git. */
+  enforcesReadOnly: boolean;
+  /** Its write mode runs in an OS sandbox, so links to the caller's dependencies are safe. */
+  sandboxesWrites: boolean;
   /** Null when ready, otherwise why it can't run. */
   unavailable(): string | null;
   invocation(ctx: RunContext): Invocation;
@@ -70,6 +74,8 @@ export const codex: Provider = {
   id: "codex",
   lab: "openai",
   label: "Codex (ChatGPT)",
+  enforcesReadOnly: true,
+  sandboxesWrites: true,
   unavailable() {
     if (!which("codex")) return "codex isn't installed";
     if (!existsSync(join(process.env.CODEX_HOME ?? join(home, ".codex"), "auth.json"))) return "codex isn't signed in (run `codex login`)";
@@ -115,6 +121,8 @@ export const grok: Provider = {
   id: "grok",
   lab: "xai",
   label: "Grok",
+  enforcesReadOnly: false,
+  sandboxesWrites: true,
   unavailable() {
     if (!which("grok")) return "grok isn't installed";
     if (!existsSync(join(home, ".grok", "auth.json"))) return "grok isn't signed in (run `grok login`)";
@@ -150,6 +158,8 @@ export const muse: Provider = {
   id: "muse",
   lab: "meta",
   label: "Muse (Meta)",
+  enforcesReadOnly: false,
+  sandboxesWrites: true,
   unavailable() {
     if (!which("muse")) return "muse isn't installed";
     if (!existsSync(join(home, ".config", "muse", "auth.json"))) return "muse isn't signed in (run `muse login`)";
@@ -211,6 +221,9 @@ export function claudeAccount(id: string, email: string, config: Config, employe
     lab: "anthropic",
     label: `Claude (${email})`,
     employerOnly,
+    // Read-only is an allow list of read tools. Writes have no OS sandbox, only an allow list.
+    enforcesReadOnly: true,
+    sandboxesWrites: false,
     unavailable() {
       if (!which("claude")) return "claude isn't installed";
       if (!configDir()) return `no Claude login for ${email} (add it in Token Stats with Add account)`;

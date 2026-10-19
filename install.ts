@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { home, type Config } from "./config.ts";
 
@@ -52,7 +52,10 @@ function rewrite(config: Config, change: (s: Settings) => Settings): string {
     mkdirSync(backups, { recursive: true });
     copyFileSync(path, join(backups, `settings.json.before-delegate-${Date.now()}`));
   }
-  writeFileSync(path, after);
+  // Write beside it and rename, so a crash can never leave Claude Code with half a settings file.
+  const tmp = `${path}.delegate-${process.pid}.tmp`;
+  writeFileSync(tmp, after);
+  renameSync(tmp, path);
   return path;
 }
 

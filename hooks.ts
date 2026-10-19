@@ -72,7 +72,7 @@ export function preToolUse(input: any, ctx: HookContext): object | null {
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       additionalContext:
-        `delegate hook: this ${what} bills the main Claude account${budget.known ? ` (${budget.text})` : ""}. ` +
+        `delegate hook: this ${what} bills the main Claude account${budget.known ? `, which has ${budget.text}` : ""}. ` +
         `Unless it needs this session's own tools, \`delegate\` could run it on another subscription instead (${others}). See the delegate skill.`,
     },
   };

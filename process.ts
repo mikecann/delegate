@@ -24,21 +24,29 @@ const KILL_GRACE_MS = 10_000;
 const live = new Set<ChildProcess>();
 let cancelled = false;
 
-/** Kill a child and everything it started. Each child leads its own process group. */
-function killGroup(child: ChildProcess, signal: NodeJS.Signals) {
-  if (child.pid === undefined || child.exitCode !== null) return;
-  try {
-    process.kill(-child.pid, signal);
-  } catch {
-    try { child.kill(signal); } catch {}
-  }
+/**
+ * Signal a child's whole process group. The group outlives its leader, so this
+ * still reaches children it left behind after it exited.
+ */
+function signalGroup(pid: number | undefined, signal: NodeJS.Signals | 0): boolean {
+  if (pid === undefined) return false;
+  try { process.kill(-pid, signal); return true; } catch { return false; }
+}
+
+/** SIGTERM the group, wait for it to go, then SIGKILL whatever is left. */
+async function reapGroup(pid: number | undefined, graceMs: number) {
+  if (!signalGroup(pid, 0)) return;
+  signalGroup(pid, "SIGTERM");
+  const deadline = Date.now() + graceMs;
+  while (Date.now() < deadline && signalGroup(pid, 0)) await Bun.sleep(100);
+  signalGroup(pid, "SIGKILL");
 }
 
 function onParentSignal(signal: NodeJS.Signals) {
   cancelled = true;
-  for (const child of live) killGroup(child, "SIGTERM");
+  for (const child of live) signalGroup(child.pid, "SIGTERM");
   setTimeout(() => {
-    for (const child of live) killGroup(child, "SIGKILL");
+    for (const child of live) signalGroup(child.pid, "SIGKILL");
     process.exit(signal === "SIGINT" ? 130 : 143);
   }, 2_000).unref();
 }
@@ -50,7 +58,8 @@ for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
 /**
  * Run a command in its own process group with output going straight to files,
  * so a huge transcript never sits in memory. On timeout the whole group gets
- * SIGTERM, then SIGKILL if it hasn't gone after a grace period.
+ * SIGTERM, then SIGKILL if it hasn't gone after a grace period. Anything still
+ * in the group when the leader exits is reaped the same way.
  */
 export function runProcess(options: ProcessOptions): Promise<ProcessResult> {
   const started = Date.now();
@@ -69,14 +78,17 @@ export function runProcess(options: ProcessOptions): Promise<ProcessResult> {
 
     const timer = setTimeout(() => {
       timedOut = true;
-      killGroup(child, "SIGTERM");
-      setTimeout(() => killGroup(child, "SIGKILL"), KILL_GRACE_MS).unref();
+      signalGroup(child.pid, "SIGTERM");
+      setTimeout(() => signalGroup(child.pid, "SIGKILL"), KILL_GRACE_MS).unref();
     }, options.timeoutMs);
 
-    const finish = (exitCode: number | null, signal: string | null) => {
+    const finish = async (exitCode: number | null, signal: string | null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      // Whatever the leader left running (servers, watchers, children that
+      // ignored SIGTERM) goes too, before we report back.
+      await reapGroup(child.pid, timedOut ? KILL_GRACE_MS : 2_000);
       live.delete(child);
       closeSync(out);
       closeSync(err);
