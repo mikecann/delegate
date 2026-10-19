@@ -1,0 +1,16 @@
+{
+  "claudeAccounts": {
+    "claude-gmail": { "email": "mike.cann@gmail.com" },
+    "claude-convex": { "email": "mike.cann@convex.dev", "employerOnly": true }
+  },
+  "employer": {
+    "name": "Convex",
+    "remotes": ["github\\.com[:/]get-convex/"],
+    "paths": ["~/dev/convex/convex-videos"],
+    "allow": ["claude-convex"]
+  },
+  "hook": { "blockBelowWeeklyPercent": 40, "blockBelowFiveHourPercent": 15 },
+  "chairPreference": ["codex", "claude-gmail", "grok", "muse"],
+  "panelPreference": ["codex", "grok", "muse", "claude-gmail"],
+  "timeoutMinutes": { "read": 20, "write": 45 }
+}

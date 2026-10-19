@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# install.sh links this file onto PATH. Resolve the link without changing the
+# caller's working directory, because delegates run against the caller's repo.
+launcher="${BASH_SOURCE[0]}"
+while [[ -L "$launcher" ]]; do
+  launcher_dir="$(cd "$(dirname "$launcher")" && pwd)"
+  launcher="$(readlink "$launcher")"
+  [[ "$launcher" = /* ]] || launcher="$launcher_dir/$launcher"
+done
+tool_dir="$(cd "$(dirname "$launcher")" && pwd)"
+
+# Claude Code hooks can run with a minimal PATH, so fall back to Bun's default install.
+bun_bin="$(command -v bun 2>/dev/null || true)"
+[[ -n "$bun_bin" ]] || bun_bin="$HOME/.bun/bin/bun"
+exec "$bun_bin" run "$tool_dir/index.ts" "$@"
