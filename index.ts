@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { configPath, loadConfig, type Config } from "./config.ts";
 import { formatConsensus, runConsensus } from "./consensus.ts";
@@ -9,7 +9,7 @@ import { installHooks, uninstallHooks } from "./install.ts";
 import { accountFor, headroom, readCachedLimits, refreshInBackground, refreshLimits, resetsLabel, type Limits } from "./limits.ts";
 import { allowedProviderIds, isEmployerWork, policyRefusal } from "./policy.ts";
 import { allProviders, providerById, type Kind } from "./providers.ts";
-import { exitCodeFor, formatRun, runDelegate, type RunRecord } from "./runner.ts";
+import { exitCodeFor, formatRun, isLive, runDelegate, type RunRecord } from "./runner.ts";
 import { parseDurationMs } from "./text.ts";
 import { applyPatch, removeWorktree, repoOfWorktree } from "./workspace.ts";
 
@@ -169,15 +169,21 @@ function tryFindRun(id: string, config: Config): RunRecord | null {
   return null;
 }
 
+const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
 function cmdClean(argv: string[], config: Config) {
   const { values, positionals } = parseArgs({ args: argv, allowPositionals: true, strict: true, options: { all: { type: "boolean" } } });
   const worktrees = join(config.dataDir, "worktrees");
   const ids = values.all ? (existsSync(worktrees) ? readdirSync(worktrees) : []) : positionals;
   if (!ids.length) { console.log(values.all ? "Nothing to clean." : "Say which run to clean, or --all."); return; }
   for (const id of ids) {
+    if (!RUN_ID.test(id) || id.includes("..")) { console.error(`skipped "${id}": not a run id`); continue; }
     const record = tryFindRun(id, config);
-    const worktree = record?.worktree ?? join(worktrees, id);
-    // Worktrees left by an interrupted run have no record, so ask git which repo they belong to.
+    if (record && isLive(record)) { console.log(`skipped ${id}: it's still running`); continue; }
+    // Only ever delete inside our own worktrees folder, whatever a record says.
+    const worktree = join(worktrees, id);
+    if (resolve(worktree) !== join(resolve(worktrees), id)) continue;
+    // Worktrees left by an interrupted run may have no record, so ask git which repo they belong to.
     const repoRoot = record?.repoRoot ?? repoOfWorktree(worktree);
     if (repoRoot) removeWorktree(repoRoot, worktree, record?.branch ?? `delegate/${id}`);
     rmSync(worktree, { recursive: true, force: true });

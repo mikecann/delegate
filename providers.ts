@@ -199,10 +199,11 @@ const CLAUDE_WRITE_TOOLS = [...CLAUDE_READ_TOOLS, "Edit(./**)", "Write(./**)", "
 
 /**
  * Claude Code's OS sandbox for Bash: writes only inside the working directory
- * (and temp), no way to ask for an unsandboxed command. Checked live: it blocks
+ * (and temp), no way to ask for an unsandboxed command, and no running at all
+ * if the sandbox isn't available. Checked live: it blocks
  * `echo > ~/x` and `git diff --output=~/x`, which an allow list alone doesn't.
  */
-const CLAUDE_SANDBOX = JSON.stringify({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false } });
+const CLAUDE_SANDBOX = JSON.stringify({ sandbox: { enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false } });
 
 /** Find the CLAUDE_CONFIG_DIR whose login belongs to this email. */
 export function findClaudeConfigDir(email: string, config: Config): string | null {

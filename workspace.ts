@@ -67,6 +67,10 @@ export function prepareWorkspace(options: {
   }
   if (!git(repoRoot, ["rev-parse", "--verify", "--quiet", "HEAD"]).ok) {
     if (options.mode === "write") throw new Error(`${repoRoot} has no commits yet. Make a first commit so the delegate's changes can be reviewed.`);
+    if (!options.inPlace && !options.enforcesReadOnly) {
+      throw new Error(`${repoRoot} has no commits yet, so there's nothing to snapshot, and this provider's read-only mode doesn't reliably stop writes. ` +
+        "Make a first commit, or pass --in-place to let it work on these files anyway.");
+    }
     return { dir: options.cwd, kind: "in-place", repoRoot, notes: ["This repo has no commits yet, so the delegate ran in your working tree."] };
   }
   if (options.inPlace) {

@@ -7,7 +7,7 @@ import type { Kind, Provider } from "./providers.ts";
 import { buildPrompt, capText, formatDuration, formatTokens, stripSignoff } from "./text.ts";
 import { prepareWorkspace, removeWorktree, workspaceChanges, type Workspace } from "./workspace.ts";
 
-export type RunStatus = "ok" | "failed" | "timeout" | "cancelled" | "empty";
+export type RunStatus = "running" | "ok" | "failed" | "timeout" | "cancelled" | "empty";
 
 export type RunRecord = {
   id: string;
@@ -33,6 +33,8 @@ export type RunRecord = {
   costUsd?: number;
   startedAt: string;
   runDir: string;
+  /** Set while running, so `clean` can tell a live run from an interrupted one. */
+  pid?: number;
 };
 
 export type RunOptions = {
@@ -72,6 +74,12 @@ export async function runDelegate(options: RunOptions, config: Config): Promise<
   const runDir = join(options.parentDir ?? join(config.dataDir, "runs"), id);
   mkdirSync(runDir, { recursive: true });
   writeFileSync(join(runDir, "brief.md"), options.brief);
+  // Written before the worktree exists, so `clean --all` never mistakes this run for an abandoned one.
+  writeFileSync(join(runDir, "status.json"), JSON.stringify({
+    id, provider: options.provider.id, kind: options.kind, mode, status: "running", pid: process.pid,
+    cwd: options.cwd, workspace: "in-place", worktree: join(config.dataDir, "worktrees", id), notes: [],
+    exitCode: null, durationMs: 0, startedAt: new Date().toISOString(), runDir,
+  } satisfies RunRecord, null, 2));
 
   let ws: Workspace;
   try {
@@ -176,6 +184,12 @@ function lastLines(path: string, n: number): string {
   try { return readFileSync(path, "utf8").trim().split("\n").slice(-n).join("\n"); } catch { return ""; }
 }
 
+/** A run that says it's running and whose delegate process is still alive. */
+export function isLive(record: RunRecord): boolean {
+  if (record.status !== "running" || !record.pid) return false;
+  try { process.kill(record.pid, 0); return true; } catch { return false; }
+}
+
 export function readOutput(record: RunRecord): string {
   try { return readFileSync(join(record.runDir, "output.md"), "utf8").trim(); } catch { return ""; }
 }
@@ -211,5 +225,5 @@ export function formatRun(record: RunRecord, limits = { lines: 80, chars: 6000 }
 }
 
 export function exitCodeFor(status: RunStatus): number {
-  return { ok: 0, failed: 1, empty: 1, timeout: 124, cancelled: 130 }[status];
+  return { running: 1, ok: 0, failed: 1, empty: 1, timeout: 124, cancelled: 130 }[status];
 }
