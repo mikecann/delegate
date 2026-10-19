@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readlinkSync, realpathSync, symlinkSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readlinkSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { randomBytes } from "node:crypto";
 import { dirname, join, relative } from "node:path";
 
 export type Workspace = {
@@ -26,13 +28,15 @@ const MAX_UNTRACKED_BYTES = 20 * 1024 * 1024;
  */
 const LINKED_DEPENDENCY_DIRS = ["node_modules", ".venv"];
 
-function git(cwd: string, args: string[], input?: string) {
-  const result = spawnSync("git", ["-C", cwd, ...args], { encoding: "utf8", input, maxBuffer: 512 * 1024 * 1024 });
+function git(cwd: string, args: string[], input?: string, env?: Record<string, string>) {
+  const result = spawnSync("git", ["-C", cwd, ...args], {
+    encoding: "utf8", input, maxBuffer: 512 * 1024 * 1024, env: env ? { ...process.env, ...env } : undefined,
+  });
   return { ok: result.status === 0, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 }
 
-function mustGit(cwd: string, args: string[], input?: string): string {
-  const result = git(cwd, args, input);
+function mustGit(cwd: string, args: string[], input?: string, env?: Record<string, string>): string {
+  const result = git(cwd, args, input, env);
   if (!result.ok) throw new Error(`git ${args.join(" ")} failed: ${result.stderr.trim()}`);
   return result.stdout;
 }
@@ -43,11 +47,29 @@ export function repoRootOf(cwd: string): string | null {
 }
 
 /**
- * Give the delegate its own copy of the repo: a worktree at HEAD plus the
- * caller's uncommitted and untracked changes, committed as a baseline so we
- * can tell exactly what the delegate changed. Read-only work uses a detached
- * snapshot that's thrown away; write work gets a `delegate/<id>` branch that
- * stays until `delegate clean`.
+ * The whole working directory (tracked, changed and untracked files) as a git
+ * tree, built in a throwaway index so HEAD and the real index are untouched.
+ */
+function workingTree(worktree: string, exclude: string[] = []): string {
+  const indexFile = join(tmpdir(), `delegate-${process.pid}-${randomBytes(4).toString("hex")}.index`);
+  const env = { GIT_INDEX_FILE: indexFile };
+  try {
+    mustGit(worktree, ["read-tree", "HEAD"], undefined, env);
+    mustGit(worktree, ["add", "-A", "--", ".", ...exclude], undefined, env);
+    return mustGit(worktree, ["write-tree"], undefined, env).trim();
+  } finally {
+    rmSync(indexFile, { force: true });
+  }
+}
+
+/**
+ * Give the delegate its own copy of the repo: a worktree at HEAD with the
+ * caller's staged, unstaged and untracked changes recreated as they are, so
+ * `git diff HEAD` inside it shows the same thing as in the caller's repo. The
+ * baseline is a tree of that state, kept outside the history, so we can tell
+ * exactly what the delegate changed. Read-only work uses a detached snapshot
+ * that's thrown away; write work gets a `delegate/<id>` branch that stays
+ * until `delegate clean`.
  */
 export function prepareWorkspace(options: {
   cwd: string; mode: "read" | "write"; inPlace: boolean; id: string; dataDir: string;
@@ -87,10 +109,15 @@ export function prepareWorkspace(options: {
   let baseline: string;
   const linked: string[] = [];
   try {
-    const patch = mustGit(repoRoot, ["diff", "HEAD", "--binary"]);
-    if (patch.trim()) {
-      const applied = git(worktree, ["apply", "--binary", "--whitespace=nowarn"], patch);
-      if (!applied.ok) notes.push(`Couldn't copy your uncommitted changes into the snapshot, so it's at HEAD: ${applied.stderr.trim()}`);
+    const staged = mustGit(repoRoot, ["diff", "--cached", "--binary"]);
+    const unstaged = mustGit(repoRoot, ["diff", "--binary"]);
+    if (staged.trim()) {
+      const applied = git(worktree, ["apply", "--index", "--binary", "--whitespace=nowarn"], staged);
+      if (!applied.ok) notes.push(`Couldn't copy your staged changes into the snapshot: ${applied.stderr.trim()}`);
+    }
+    if (unstaged.trim()) {
+      const applied = git(worktree, ["apply", "--binary", "--whitespace=nowarn"], unstaged);
+      if (!applied.ok) notes.push(`Couldn't copy your unstaged changes into the snapshot: ${applied.stderr.trim()}`);
     }
     const untracked = mustGit(repoRoot, ["ls-files", "--others", "--exclude-standard", "-z"]).split("\0").filter(Boolean);
     let skipped = 0;
@@ -108,12 +135,7 @@ export function prepareWorkspace(options: {
     if (skipped) notes.push(`Left ${skipped} untracked file(s) out of the snapshot (over 20 MB or unreadable).`);
     if (existsSync(join(repoRoot, ".gitmodules"))) notes.push("This repo has submodules, and they aren't included in the snapshot.");
 
-    mustGit(worktree, ["add", "-A"]);
-    mustGit(worktree, [
-      "-c", "user.name=delegate", "-c", "user.email=delegate@localhost", "-c", "commit.gpgsign=false",
-      "commit", "--quiet", "--no-verify", "--allow-empty", "-m", "delegate baseline",
-    ]);
-    baseline = mustGit(worktree, ["rev-parse", "HEAD"]).trim();
+    baseline = workingTree(worktree);
 
     if (options.linkDependencies) {
       for (const name of LINKED_DEPENDENCY_DIRS) {
@@ -139,12 +161,11 @@ export function prepareWorkspace(options: {
 /** Everything the delegate changed since the baseline, including anything it committed. */
 export function workspaceChanges(ws: Workspace): Changes {
   if (!ws.worktree || !ws.baseline) return { files: [], stat: "", patch: "" };
-  const exclude = (ws.linked ?? []).map((name) => `:(exclude)${name}`);
-  mustGit(ws.worktree, ["add", "-A", "--", ".", ...exclude]);
+  const now = workingTree(ws.worktree, (ws.linked ?? []).map((name) => `:(exclude)${name}`));
   return {
-    files: mustGit(ws.worktree, ["diff", "--cached", "--name-only", ws.baseline]).split("\n").filter(Boolean),
-    stat: mustGit(ws.worktree, ["diff", "--cached", "--shortstat", ws.baseline]).trim(),
-    patch: mustGit(ws.worktree, ["diff", "--cached", "--binary", ws.baseline]),
+    files: mustGit(ws.worktree, ["diff", "--name-only", ws.baseline, now]).split("\n").filter(Boolean),
+    stat: mustGit(ws.worktree, ["diff", "--shortstat", ws.baseline, now]).trim(),
+    patch: mustGit(ws.worktree, ["diff", "--binary", ws.baseline, now]),
   };
 }
 

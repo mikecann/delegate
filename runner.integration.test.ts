@@ -26,6 +26,20 @@ describe("runDelegate", () => {
     expect(formatRun(record)).toContain("despite being read-only");
   });
 
+  test("the snapshot keeps staged and unstaged changes as they are, so git diff works inside it", async () => {
+    const repo = tempRepo();
+    writeFileSync(join(repo, "a.txt"), "staged\n");
+    git(repo, "add", "a.txt");
+    writeFileSync(join(repo, "sub", "b.txt"), "unstaged\n");
+    const provider = fakeProvider('echo "cached: $(git diff --cached --name-only)"; echo "unstaged: $(git diff --name-only)"; echo "vs head: $(git diff HEAD --name-only | tr "\n" " ")"');
+    const record = await runDelegate({ provider, kind: "review", brief: "x", cwd: repo }, testConfig());
+    const output = readFileSync(join(record.runDir, "output.md"), "utf8");
+    expect(output).toContain("cached: a.txt");
+    expect(output).toContain("unstaged: sub/b.txt");
+    expect(output).toContain("vs head: a.txt sub/b.txt");
+    expect(record.strayWrites).toBeUndefined();
+  });
+
   test("runs from a subfolder start in the same subfolder of the snapshot", async () => {
     const repo = tempRepo();
     const record = await runDelegate({ provider: fakeProvider("cat b.txt"), kind: "ask", brief: "x", cwd: join(repo, "sub") }, testConfig());
