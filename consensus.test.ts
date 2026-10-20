@@ -101,6 +101,7 @@ describe("Claude model panels", () => {
   const convex = fakeProvider('printf "answer"', "claude-convex", "anthropic");
 
   test("self is excluded even when explicitly requested as panel or chair", () => {
+    process.env.CLAUDE_CODE_USER_EMAIL = "mike.cann@gmail.com";
     const c = testConfig({ mainClaudeEmail: "mike.cann@gmail.com" });
     expect(choosePanel(all, { all: true }, c, null).panel.map((p) => p.id)).not.toContain("claude-gmail");
     expect(() => choosePanel(all, { chair: "claude-gmail" }, c, null)).toThrow("can't chair");
@@ -122,6 +123,7 @@ describe("Claude model panels", () => {
   });
 
   test("wide seats all allowed providers plus Opus and keeps a fresh chair", () => {
+    process.env.CLAUDE_CODE_USER_EMAIL = "mike.cann@gmail.com";
     const c = testConfig({ mainClaudeEmail: "mike.cann@gmail.com" });
     const result = choosePanel([...all, cann], { wide: true }, c, null);
     expect(result.panel.map((p) => p.id)).toEqual(["codex", "grok", "muse", "claude-cannstudios/claude-fable-5-1", "claude-cannstudios/opus"]);
@@ -173,4 +175,21 @@ test("an explicit single Claude panel still expands into different models", () =
   const { panel, chair } = choosePanel([provider], { panel: ["claude"], chair: "claude-convex" }, config, null);
   expect(panel.map((p) => p.id)).toEqual(["claude-convex/claude-fable-5-1", "claude-convex/opus", "claude-convex/sonnet"]);
   expect(chair?.id).toBe("claude-convex/opus");
+});
+
+
+test("an explicit multi-account single-lab panel stays as requested", () => {
+  const cann = fakeProvider("", "claude-cannstudios", "anthropic");
+  const c = testConfig({ mainClaudeEmail: "mike.cann@gmail.com" });
+  const { panel, chair } = choosePanel([claude, cann], { panel: ["claude-gmail", "claude-cannstudios"] }, c, null);
+  expect(panel.map((p) => p.id)).toEqual(["claude-gmail", "claude-cannstudios"]);
+  expect(chair).toBeNull();
+  expect(choosePanel([claude, cann], { panel: ["claude-gmail", "claude-cannstudios"], all: true }, c, null).panel).toEqual([claude, cann]);
+});
+
+
+test("a single explicit seat in a multi-lab pool keeps its existing behaviour", () => {
+  const { panel, chair } = choosePanel(all, { panel: ["codex"] }, config, null);
+  expect(panel.map((p) => p.id)).toEqual(["codex"]);
+  expect(chair?.id).toBe("claude-gmail");
 });

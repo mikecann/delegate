@@ -75,6 +75,11 @@ export function runProcess(options: ProcessOptions): Promise<ProcessResult> {
     if (value === null) delete env[key];
     else env[key] = value;
   }
+  // Delegates must use their selected subscription, not the caller's host
+  // session or an inherited API key. Also strip future host identity fields.
+  for (const key of Object.keys(env)) {
+    if (key === "CLAUDECODE" || key.startsWith("CLAUDE_CODE_") || key === "ANTHROPIC_API_KEY" || key === "ANTHROPIC_AUTH_TOKEN") delete env[key];
+  }
   env.DELEGATE_CHILD = "1";
   return new Promise((resolve) => {
     let timedOut = false;

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { expandHome, home, type Config } from "./config.ts";
-import { accountFor, headroom, readCachedLimits, sessionEmail, type Limits } from "./limits.ts";
+import { accountFor, headroom, readCachedLimits, readSavedLimits, sessionEmail, type Limits } from "./limits.ts";
 import { DELEGATE_SYSTEM_NOTE } from "./text.ts";
 
 export type Mode = "read" | "write";
@@ -210,7 +210,7 @@ const CLAUDE_SANDBOX = JSON.stringify({ sandbox: { enabled: true, failIfUnavaila
 
 /** Find the CLAUDE_CONFIG_DIR whose login belongs to this email. */
 export function findClaudeConfigDir(email: string, config: Config): string | null {
-  const live = readCachedLimits(config)?.accounts.find((a) => a.provider === "Claude" && a.email?.toLowerCase() === email.toLowerCase());
+  const live = readSavedLimits(config)?.accounts.find((a) => a.provider === "Claude" && a.email?.toLowerCase() === email.toLowerCase());
   if (live?.configDir) return resolve(expandHome(live.configDir));
   const accounts = join(config.tokenStatsDir, "Accounts");
   const candidates = existsSync(accounts)
@@ -295,7 +295,12 @@ export function isSessionProvider(id: string, config: Config, limits: Limits | n
 
 /** Callers supply only providers allowed by the employer policy. Unknown quota is last. */
 export function bestClaude(candidates: Provider[], config: Config, limits: Limits | null): Provider | undefined {
-  return candidates.filter((p) => p.lab === "anthropic" && !isSessionProvider(p.accountId ?? p.id, config, limits))
+  const protectedEmail = config.mainClaudeEmail?.trim().toLowerCase();
+  return candidates.filter((p) => {
+    const id = p.accountId ?? p.id;
+    return p.lab === "anthropic" && !isSessionProvider(id, config, limits) &&
+      (!protectedEmail || config.claudeAccounts[id]?.email.trim().toLowerCase() !== protectedEmail);
+  })
     .map((p) => ({ p, room: headroom(accountFor(limits, p.accountId ?? p.id, config))?.percent }))
     .filter(({ room }) => room === undefined || room >= 10)
     .sort((a, b) => (b.room ?? -1) - (a.room ?? -1))[0]?.p;

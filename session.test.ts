@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { home, loadConfig } from "./config.ts";
-import { accountFor, cachePath, sessionEmail, type Limits } from "./limits.ts";
+import { accountFor, cachePath, readCachedLimits, sessionEmail, type Limits } from "./limits.ts";
 import { bestClaude, claudeAccount, findClaudeConfigDir, isSessionProvider, type RunContext } from "./providers.ts";
 import { runProcess } from "./process.ts";
 import { isolateSessionEnv, fakeProvider, tempDir, testConfig } from "./test-helpers.ts";
@@ -26,7 +26,7 @@ function withEmail(email: string | undefined, fn: () => void) {
 }
 
 describe("session identity and Claude routing", () => {
-  test("email wins over the default directory; env wins over config", () => {
+  test("session email wins; outside Claude the protected main supplies the budget", () => {
     const config = testConfig({ mainClaudeEmail: "mike.cann@gmail.com", mainClaudeConfigDir: join(home, ".claude") });
     withEmail(undefined, () => expect(accountFor(limits, "main", config)?.email).toBe("mike.cann@gmail.com"));
     withEmail(" MIKE@CANNSTUDIOS.COM ", () => {
@@ -35,7 +35,10 @@ describe("session identity and Claude routing", () => {
       expect(isSessionProvider("claude-cannstudios", config, limits)).toBe(true);
     });
     withEmail("unknown@example.com", () => expect(accountFor(limits, "main", config)).toBeUndefined());
-    withEmail(undefined, () => expect(accountFor(limits, "main", { ...config, mainClaudeEmail: null })?.email).toBe("mike@cannstudios.com"));
+    withEmail(undefined, () => {
+      expect(sessionEmail(config, limits)).toBeNull();
+      expect(accountFor(limits, "main", { ...config, mainClaudeEmail: null })).toBeUndefined();
+    });
   });
 
   test("live limits resolve the default login before stale account files", () => {
@@ -127,4 +130,89 @@ test("Claude read and write invocations keep strict MCP and sandbox flags", () =
     expect(invocation.args[invocation.args.indexOf("--allowedTools") + 1].includes("Edit(./**)")).toBe(mode === "write");
   }
   withEmail("mike@cannstudios.com", () => expect(provider.unavailable()).toBe("that's the account this session runs on"));
+});
+
+
+test("terminal sessions use the active login directory, never the protected main email", () => {
+  const config = testConfig({ mainClaudeEmail: "mike.cann@gmail.com", mainClaudeConfigDir: join(home, ".claude") });
+  process.env.CLAUDECODE = "1";
+  expect(sessionEmail(config, limits)).toBe("mike@cannstudios.com");
+  expect(isSessionProvider("claude-cannstudios", config, limits)).toBe(true);
+  expect(accountFor(limits, "main", config)?.email).toBe("mike@cannstudios.com");
+  const gmail = fakeProvider("", "claude-gmail", "anthropic");
+  const cann = fakeProvider("", "claude-cannstudios", "anthropic");
+  expect(bestClaude([gmail, cann], config, limits)).toBeUndefined();
+  // A concrete protected account remains available when it isn't this session.
+  expect(isSessionProvider(gmail.id, config, limits)).toBe(false);
+  process.env.CLAUDE_CONFIG_DIR = "/accounts/gmail";
+  expect(sessionEmail(config, limits)).toBe("mike.cann@gmail.com");
+  expect(bestClaude([gmail, cann], config, limits)?.id).toBe(cann.id);
+  withEmail("unknown@example.com", () => expect(sessionEmail(config, limits)).toBe("unknown@example.com"));
+  delete process.env.CLAUDECODE;
+  expect(sessionEmail(config, limits)).toBeNull();
+});
+
+test("merged Claude accounts dedupe emails with user keys winning", () => {
+  const path = join(tempDir(), "config.json");
+  writeFileSync(path, JSON.stringify({ claudeAccounts: {
+    "my-personal": { email: " MIKE@CANNSTUDIOS.COM " },
+    "claude-gmail": { email: "custom@example.com" },
+    "custom-alias": { email: "CUSTOM@example.com" },
+  } }));
+  const accounts = loadConfig(path).claudeAccounts;
+  expect(accounts["claude-cannstudios"]).toBeUndefined();
+  expect(accounts["my-personal"].email).toBe("mike@cannstudios.com");
+  expect(accounts["claude-gmail"].email).toBe("custom@example.com");
+  expect(accounts["custom-alias"]).toBeUndefined();
+  expect(Object.values(accounts).filter((a) => a.email === "custom@example.com")).toHaveLength(1);
+  expect(accounts["claude-convex"].employerOnly).toBe(true);
+});
+
+test("old cached logins still map to the default config directory", () => {
+  const config = testConfig();
+  mkdirSync(config.dataDir, { recursive: true });
+  const old = { ...limits, generatedAt: new Date(Date.now() - 30 * 86400000).toISOString() };
+  writeFileSync(cachePath(config), JSON.stringify(old));
+  expect(findClaudeConfigDir("mike@cannstudios.com", config)).toBe(join(home, ".claude"));
+  expect(findClaudeConfigDir("not-present@example.com", config)).toBeNull();
+  expect(readCachedLimits(config)).toBeNull();
+  process.env.CLAUDECODE = "1";
+  expect(sessionEmail({ ...config, mainClaudeConfigDir: join(home, ".claude") })).toBe("mike@cannstudios.com");
+  // The same mapping must work from Token Stats' own old snapshot.
+  mkdirSync(config.tokenStatsDir, { recursive: true });
+  writeFileSync(join(config.tokenStatsDir, "limits.json"), JSON.stringify(old));
+  expect(findClaudeConfigDir("mike@cannstudios.com", { ...config, dataDir: tempDir() })).toBe(join(home, ".claude"));
+});
+
+test("every child drops parent Claude identity, host auth and API credentials", async () => {
+  const dir = tempDir();
+  const keys = ["CLAUDECODE", "CLAUDE_CODE_USER_EMAIL", "CLAUDE_CODE_ACCOUNT_UUID", "CLAUDE_CODE_ORGANIZATION_UUID",
+    "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH", "CLAUDE_CODE_OAUTH_SCOPES", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN",
+    "CLAUDE_CODE_HOST_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_FUTURE_VARIABLE", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"];
+  const before = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  try {
+    for (const key of keys) process.env[key] = "parent-value";
+    const provider = fakeProvider('printf "unused"');
+    const invocation = provider.invocation(context);
+    const result = await runProcess({ ...invocation, command: process.execPath,
+      args: ["-e", `console.log(JSON.stringify({leaked: Object.keys(process.env).filter(k => ${JSON.stringify(keys)}.includes(k)), child: process.env.DELEGATE_CHILD, dir: process.env.CLAUDE_CONFIG_DIR}))`],
+      cwd: dir, env: { ...invocation.env, CLAUDE_CONFIG_DIR: "/chosen/login", CLAUDE_CODE_ENTRYPOINT: "override", ANTHROPIC_API_KEY: "override" },
+      stdoutFile: join(dir, "out"), stderrFile: join(dir, "err"), timeoutMs: 5000 });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(readFileSync(join(dir, "out"), "utf8"))).toEqual({ leaked: [], child: "1", dir: "/chosen/login" });
+  } finally {
+    for (const key of keys) {
+      if (before[key] === undefined) delete process.env[key];
+      else process.env[key] = before[key];
+    }
+  }
+});
+
+
+test("null disables main-account protection without inventing a session identity", () => {
+  const config = testConfig({ mainClaudeEmail: null });
+  const gmail = fakeProvider("", "claude-gmail", "anthropic");
+  expect(sessionEmail(config, limits)).toBeNull();
+  expect(bestClaude([gmail], config, limits)?.id).toBe(gmail.id);
+  expect(accountFor(limits, "main", config)).toBeUndefined();
 });

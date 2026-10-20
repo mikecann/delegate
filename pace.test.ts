@@ -52,6 +52,7 @@ test("pace states use warning, blocking and absolute floors", () => {
 });
 
 test("session and prompt guidance includes session email, pace and orchestrator role", () => {
+  process.env.CLAUDE_CODE_USER_EMAIL = "me@main.com";
   const text = (sessionStart(ctx(43, 38)) as any).hookSpecificOutput.additionalContext;
   expect(text).toContain("this session runs on me@main.com");
   expect(text).toContain("43% of its weekly limit left and 38% of the week to go");
@@ -84,4 +85,22 @@ test("pace boundaries respect configured thresholds and clamp elapsed/reset wind
   expect(mainBudget(elapsed).weekLeft).toBe(0);
   expect(mainBudget(elapsed).state).toBe("on pace");
   expect(mainBudget(ctx(90, 200)).weekLeft).toBe(100);
+});
+
+
+test("weekday resets just passed are unknown until the snapshot catches up", () => {
+  const window = { kind: "weekly", title: "Weekly", remainingPercent: 50, resetsText: "resets Tue 12:00 pm" };
+  for (const minutes of [0, 1, 360]) {
+    expect(resetTime(window, new Date(2026, 9, 20, 12, minutes))).toBeNull();
+  }
+  expect(resetTime(window, new Date(2026, 9, 20, 18, 1))?.getTime()).toBe(new Date(2026, 9, 27, 12).getTime());
+  // The six-hour grace also crosses midnight into the next weekday.
+  expect(resetTime({ ...window, resetsText: "resets Mon 11:59 pm" }, new Date(2026, 9, 20, 0, 1))).toBeNull();
+  const context = ctx(50, null);
+  context.limits!.generatedAt = new Date(2026, 9, 20, 12, 1).toISOString();
+  context.now = new Date(context.limits!.generatedAt);
+  context.limits!.accounts[0].windows[1] = window;
+  expect(mainBudget(context).weekLeft).toBeNull();
+  expect(mainBudget(context).state).toBe("on pace");
+  expect((preToolUse({ tool_name: "Agent" }, context) as any).hookSpecificOutput.permissionDecision).toBeUndefined();
 });

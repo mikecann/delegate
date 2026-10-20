@@ -13,7 +13,7 @@ function cli(args: string[], options: { env?: Record<string, string>; config?: R
   return spawnSync(process.execPath, [join(import.meta.dir, "index.ts"), ...args], {
     cwd: dir, input: options.input ?? "{}", encoding: "utf8", timeout: 5000,
     // Empty PATH prevents any real CLI being discovered or called.
-    env: { ...process.env, PATH: "", CLAUDE_CODE_USER_EMAIL: "", DELEGATE_CHILD: "", DELEGATE_CONFIG: path, ...options.env },
+    env: { ...process.env, PATH: "", CLAUDE_CODE_USER_EMAIL: "", CLAUDECODE: "", CLAUDE_CONFIG_DIR: "", DELEGATE_CHILD: "", DELEGATE_CONFIG: path, ...options.env },
   });
 }
 

@@ -33,7 +33,7 @@ Paste this into your AI coding agent (Claude Code, Codex, Cursor...):
 
 ### Or set it up by hand
 
-You'll need [Bun](https://bun.sh), Git, and whichever of these CLIs you have, signed in: [Codex](https://github.com/openai/codex) (`codex login`), Grok Build (`grok login`), Muse Code (`muse login`), and [Claude Code](https://claude.com/claude-code). Claude accounts are matched by email to their live login directories in Token Stats' limits data, with its Accounts folder as a fallback. The defaults are `claude-gmail` (mike.cann@gmail.com), `claude-cannstudios` (mike@cannstudios.com) and the work-only `claude-convex` (mike.cann@convex.dev). Add extra logins in Token Stats with **Add account**. The default terminal login in `~/.claude` works too.
+You'll need [Bun](https://bun.sh), Git, and whichever of these CLIs you have, signed in: [Codex](https://github.com/openai/codex) (`codex login`), Grok Build (`grok login`), Muse Code (`muse login`), and [Claude Code](https://claude.com/claude-code). Claude accounts are matched by email to login directories in Token Stats' saved limits data, even when the snapshot is too old for budget checks, with its Accounts folder as a fallback. The defaults are `claude-gmail` (mike.cann@gmail.com), `claude-cannstudios` (mike@cannstudios.com) and the work-only `claude-convex` (mike.cann@convex.dev). Add extra logins in Token Stats with **Add account**. The default terminal login in `~/.claude` works too.
 
 ```bash
 git clone https://github.com/mikecann/delegate.git
@@ -58,7 +58,7 @@ delegate run --to codex --kind implement --brief - < task.md
 delegate consensus --no-repo "Redis or Postgres for sessions, given ...?"
 ```
 
-- `--to claude` picks the allowed Claude account with the most headroom, measured by its tightest 5-hour or weekly window. It skips this session's account and accounts below 10%. Unknown limits are a last choice. In a Convex repo that means `claude-convex`; elsewhere, while I'm on Gmail, it's usually `claude-cannstudios`. Concrete provider ids still work.
+- `--to claude` picks the allowed Claude account with the most headroom, measured by its tightest 5-hour or weekly window. It skips this session's account, the protected `mainClaudeEmail` account, and accounts below 10%. Unknown limits are a last choice. In a Convex repo that means `claude-convex`; elsewhere, while I'm on Gmail, it's usually `claude-cannstudios`. Concrete provider ids still work, including `--to claude-gmail` when Gmail isn't this session's account.
 - Claude delegates use Opus unless you pass `--model`. Consensus uses Fable (`claude-fable-5-1`), with extra model seats as described below. Delegated Claude runs use `--strict-mcp-config`, so they don't start my global MCP servers.
 - `--kind` is `ask`, `review`, `research` or `implement`. Only `implement` (or `--write`) can change files.
 - After an implement job: `delegate diff <id>` to look, `delegate apply <id>` to bring it into your repo, `delegate clean <id>` to remove its worktree and branch. `apply` only changes anything if the patch applies cleanly. Add `--3way` to merge it anyway, which can leave conflict markers.
@@ -66,7 +66,7 @@ delegate consensus --no-repo "Redis or Postgres for sessions, given ...?"
 - `--no-repo` for questions that don't need the code, `--in-place` to skip the snapshot in a huge repo, `--timeout 30m`, `--model`, `--effort`.
 - For consensus: `--deep` adds a second round where each one answers the strongest argument against them, `--devil` gets one to argue the other side, `--all` puts every allowed provider on the panel and skips the chair.
 - `--wide` puts every allowed provider on the panel and gives the chosen Claude account both a Fable and an Opus seat. A separate fresh call chairs it, even if that account also answered. Combine it with `--deep` and `--devil`, or `--all` to skip the chair. The output lists who sat, including the Claude model seats.
-- With fewer than two labs available, as in a Convex repo, consensus uses Fable, Opus and Sonnet on the allowed Claude account, then a separate fresh Opus call as chair. `--all` skips the chair here too; `--wide` uses its two Claude seats instead. The chair gets anonymised answers in every mode.
+- With fewer than two labs available, as in a Convex repo, a panel with fewer than two providers expands to Fable, Opus and Sonnet on the allowed Claude account, then a separate fresh Opus call as chair. An explicit `--panel` with two or more allowed providers stays as given, even if they're all Claude accounts. `--all` skips the chair here too; `--wide` uses its two Claude seats instead. The chair gets anonymised answers in every mode.
 - `delegate hook pause 1h` turns the hook off for a bit, `delegate hook resume` turns it back on.
 
 The skill in `skill/SKILL.md` is what tells Claude which account suits which job and how to write a brief that makes sense without the conversation.
@@ -75,15 +75,17 @@ The skill in `skill/SKILL.md` is what tells Claude which account suits which job
 
 I use the Claude desktop app on Gmail, but my terminal's default `~/.claude` login is Cannstudios. Those aren't the same account, which caught me out for a while.
 
-Delegate reads `CLAUDE_CODE_USER_EMAIL` from the calling session first, then `mainClaudeEmail` from the config (default `mike.cann@gmail.com`). That email identifies the main account in Token Stats. If neither email is set, `mainClaudeConfigDir` still works as a last fallback. Set `mainClaudeEmail` to `null` if you need that old behaviour. An email we can't find has unknown limits; we don't substitute the terminal's account.
+Delegate reads `CLAUDE_CODE_USER_EMAIL` from the calling session first. Without it, if `CLAUDECODE` is set, it looks up the Token Stats account for `CLAUDE_CONFIG_DIR`, or `mainClaudeConfigDir` when that variable isn't set. Outside a Claude Code session, or without a matching login, the session account is unknown. An email we can't find has unknown limits; we don't substitute the terminal's account.
+
+`mainClaudeEmail` (default `mike.cann@gmail.com`) is the account I want to protect. The `--to claude` alias and the `claude` consensus preference never choose it automatically, even from another session. I can still ask for it by name with `--to claude-gmail` when Gmail isn't the session's own account. Set `mainClaudeEmail` to `null` to turn off that protection. The hooks use the session's account for budget checks when known, otherwise the protected main account.
 
 The session's own Claude account is shown as **this session** in `delegate providers`, and can't receive a run or sit on a consensus panel, including as chair. For the terminal's default `~/.claude` login, delegate removes `CLAUDE_CONFIG_DIR` from the child's environment. Setting it, even to the same path or an empty string, changes which keychain login Claude Code uses. We don't read `~/.claude.json` to identify that login, because the desktop app overwrites its account details.
 
-Every provider child gets `DELEGATE_CHILD=1`. Hooks then stay silent, and nested `delegate run` or `delegate consensus` calls refuse, so a delegate loading my global Claude hooks doesn't hand the job off again.
+Every provider child drops `CLAUDECODE`, all `CLAUDE_CODE_*` variables, `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`, so it uses its chosen subscription instead of inheriting the parent's identity, host-auth refresh or API billing. It keeps the selected `CLAUDE_CONFIG_DIR` handling and gets `DELEGATE_CHILD=1`. Hooks then stay silent, and nested `delegate run` or `delegate consensus` calls refuse, so a delegate loading my global Claude hooks doesn't hand the job off again.
 
 ## Hook pace settings
 
-The hook calculates `behind = weekLeft% - budgetLeft%` for the main account's weekly window. It uses a reset timestamp when available, otherwise Token Stats' reset text, including relative times and weekday times. Relative times stay anchored to when the limits were fetched.
+The hook calculates `behind = weekLeft% - budgetLeft%` for the session account's weekly window, falling back to `mainClaudeEmail` when the session account is unknown. It uses a reset timestamp when available, otherwise Token Stats' reset text, including relative times and weekday times. Relative times stay anchored to when the limits were fetched. A weekday reset within the last six hours of the snapshot counts as unknown, because the percentage may still be from before the reset.
 
 ```json
 {
@@ -101,9 +103,9 @@ The hook calculates `behind = weekLeft% - budgetLeft%` for the main account's we
 
 Below 5 percentage points behind, it's on pace and reminds the session to act as the orchestrator and delegate big chunks. At 5 points behind, it asks for everything but quick edits to be delegated. At 15 points behind, or below either absolute budget floor, built-in sub-agents are blocked. If the reset can't be parsed, the old 40% weekly cutoff applies, along with the configured floors. Unknown limits only get a reminder. `local:` descriptions and `delegate hook pause` still let work through.
 
-`UserPromptSubmit` prints nothing when on pace. When behind, it adds one line of context on each prompt. All event hooks read cached files and start any stale refresh in the background. They don't wait for Token Stats.
+`UserPromptSubmit` prints nothing when on pace. When behind, it adds one line of context on each prompt. All event hooks read cached files and start any stale refresh in the background. They don't wait for Token Stats. A marker in `dataDir` limits background launches to one every two minutes, including failed attempts, and a separate lock stops overlapping refreshes. An abandoned refresh lock expires after five minutes.
 
-The `claude` entry in either consensus preference list means the allowed, non-self Claude account with the most headroom. Concrete provider ids are still accepted. Normal consensus chooses one provider per lab and keeps the chair out of the panel when there are enough providers.
+The `claude` entry in either consensus preference list means the allowed Claude account with the most headroom, excluding this session and the protected main account. Concrete provider ids are still accepted. Normal consensus chooses one provider per lab and keeps the chair out of the panel when there are enough providers.
 
 ## How it works
 

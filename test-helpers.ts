@@ -72,18 +72,16 @@ export function withMainWeekly(limits: Limits, percent: number): Limits {
 
 /** Tests must not inherit the desktop session's identity or nesting flag. */
 export function isolateSessionEnv() {
-  let email: string | undefined;
-  let child: string | undefined;
+  const keys = ["CLAUDE_CODE_USER_EMAIL", "CLAUDECODE", "CLAUDE_CONFIG_DIR", "DELEGATE_CHILD"];
+  let saved: Record<string, string | undefined>;
   beforeEach(() => {
-    email = process.env.CLAUDE_CODE_USER_EMAIL;
-    child = process.env.DELEGATE_CHILD;
-    delete process.env.CLAUDE_CODE_USER_EMAIL;
-    delete process.env.DELEGATE_CHILD;
+    saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    for (const key of keys) delete process.env[key];
   });
   afterEach(() => {
-    if (email === undefined) delete process.env.CLAUDE_CODE_USER_EMAIL;
-    else process.env.CLAUDE_CODE_USER_EMAIL = email;
-    if (child === undefined) delete process.env.DELEGATE_CHILD;
-    else process.env.DELEGATE_CHILD = child;
+    for (const key of keys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
   });
 }

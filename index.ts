@@ -221,7 +221,7 @@ async function cmdHook(argv: string[], config: Config) {
     if (sub === "pre-tool-use" && !["Agent", "Task", "Workflow"].includes(input.tool_name)) return;
     const cwd = input.cwd || process.cwd();
     const limits = readCachedLimits(config);
-    if (!limits || limits.stale) refreshInBackground(join(import.meta.dir, "delegate"));
+    if (!limits || limits.stale) refreshInBackground(join(import.meta.dir, "delegate"), config);
     const providers = allProviders(config);
     const employerWork = isEmployerWork(cwd, config);
     const ids = allowedProviderIds(cwd, config, providers, employerWork);

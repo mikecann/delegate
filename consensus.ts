@@ -89,7 +89,7 @@ export function choosePanel(
     });
   }
 
-  if (!options.wide && new Set(ready.map((p) => p.lab)).size < 2 && claude) {
+  if (!options.wide && panel.length < 2 && new Set(ready.map((p) => p.lab)).size < 2 && claude) {
     const account = bestClaude(panel, config, limits) ?? claude;
     panel = ["claude-fable-5-1", "opus", "sonnet"].map((model) => modelSeat(account, model));
     const chair = wantsChair ? modelSeat(explicitChair ?? account, "opus") : null;

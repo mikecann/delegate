@@ -81,6 +81,19 @@ export function loadConfig(path = configPath()): Config {
     hook: { ...config.hook, ...user.hook },
     timeoutMinutes: { ...config.timeoutMinutes, ...user.timeoutMinutes },
   };
+  // Visit user keys first so a renamed account replaces its default alias.
+  // The first user key wins if the user's own file contains duplicates.
+  const seenEmails = new Set<string>();
+  merged.claudeAccounts = Object.fromEntries(
+    [...new Set([...Object.keys(user.claudeAccounts ?? {}), ...Object.keys(merged.claudeAccounts)])]
+      .flatMap((id) => {
+        const account = merged.claudeAccounts[id];
+        const email = account.email.trim().toLowerCase();
+        if (seenEmails.has(email)) return [];
+        seenEmails.add(email);
+        return [[id, { ...account, email }]];
+      }),
+  );
   for (const key of ["dataDir", "mainClaudeConfigDir", "tokenStatsDir"] as const) {
     merged[key] = resolve(expandHome(merged[key]));
   }

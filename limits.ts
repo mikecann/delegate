@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { expandHome, type Config } from "./config.ts";
 
@@ -38,12 +38,8 @@ function ageMinutes(limits: Limits, now: Date): number {
   return (now.getTime() - new Date(limits.generatedAt).getTime()) / 60_000;
 }
 
-/**
- * The newest limits we have on disk, without any network calls, so hooks stay
- * fast. Token Stats' own snapshot wins, then our cache. Anything older than a
- * few hours is ignored.
- */
-export function readCachedLimits(config: Config, now = new Date()): (Limits & { stale: boolean }) | null {
+/** Login mappings remain useful even when the quota snapshot is too old. */
+export function readSavedLimits(config: Config): Limits | null {
   const candidates: Limits[] = [];
   const file = readJson(tokenStatsFile(config));
   if (file?.accounts) candidates.push({ generatedAt: file.generatedAt, accounts: file.accounts, source: "token-stats limits.json" });
@@ -52,39 +48,68 @@ export function readCachedLimits(config: Config, now = new Date()): (Limits & { 
   const newest = candidates
     .filter((l) => !Number.isNaN(new Date(l.generatedAt).getTime()))
     .sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime())[0];
+  return newest ?? null;
+}
+
+/** Hooks only use recent quota numbers, without any network calls. */
+export function readCachedLimits(config: Config, now = new Date()): (Limits & { stale: boolean }) | null {
+  const newest = readSavedLimits(config);
   if (!newest || ageMinutes(newest, now) > USABLE_HOURS * 60) return null;
   return { ...newest, stale: ageMinutes(newest, now) > FRESH_MINUTES };
 }
 
+/** Claim a file atomically; abandoned markers expire so a crash can't block forever. */
+function claimRefreshMarker(path: string, maxAgeMs: number): boolean {
+  try {
+    if (existsSync(path)) {
+      if (Date.now() - statSync(path).mtimeMs < maxAgeMs) return false;
+      rmSync(path, { force: true });
+    }
+    writeFileSync(path, String(process.pid), { flag: "wx" });
+    return true;
+  } catch { return false; }
+}
+
 /** Ask Token Stats for fresh numbers (a couple of seconds) and cache them. */
 export function refreshLimits(config: Config): Limits | null {
-  if (!Bun.which("token-stats")) return null;
-  let limits: Limits | null = null;
-  const json = spawnSync("token-stats", ["limits", "--json"], { encoding: "utf8", timeout: 90_000 });
-  // Exit code 2 means some provider didn't answer in time; a partial list still beats none.
-  const parsed = safeParse(json.stdout ?? "");
-  if (parsed?.accounts) {
-    limits = { generatedAt: parsed.generatedAt ?? new Date().toISOString(), accounts: parsed.accounts, source: "token-stats limits --json" };
-  } else {
-    // Older Token Stats builds only print text.
-    const text = spawnSync("token-stats", ["limits"], { encoding: "utf8", timeout: 90_000 });
-    if (text.status === 0 && text.stdout.trim()) {
-      limits = { generatedAt: new Date().toISOString(), accounts: parseLimitsText(text.stdout, config), source: "token-stats limits (text)" };
+  const lock = join(config.dataDir, "limits-refresh-running");
+  try { mkdirSync(config.dataDir, { recursive: true }); } catch { return null; }
+  // Both Token Stats attempts together time out after at most three minutes.
+  if (!claimRefreshMarker(lock, 5 * 60_000)) return null;
+  try {
+    if (!Bun.which("token-stats")) return null;
+    let limits: Limits | null = null;
+    const json = spawnSync("token-stats", ["limits", "--json"], { encoding: "utf8", timeout: 90_000 });
+    // Exit code 2 means some provider didn't answer in time; a partial list still beats none.
+    const parsed = safeParse(json.stdout ?? "");
+    if (parsed?.accounts) {
+      limits = { generatedAt: parsed.generatedAt ?? new Date().toISOString(), accounts: parsed.accounts, source: "token-stats limits --json" };
+    } else {
+      // Older Token Stats builds only print text.
+      const text = spawnSync("token-stats", ["limits"], { encoding: "utf8", timeout: 90_000 });
+      if (text.status === 0 && text.stdout.trim()) {
+        limits = { generatedAt: new Date().toISOString(), accounts: parseLimitsText(text.stdout, config), source: "token-stats limits (text)" };
+      }
     }
+    if (limits) {
+      const tmp = cachePath(config) + ".tmp";
+      writeFileSync(tmp, JSON.stringify(limits, null, 2));
+      renameSync(tmp, cachePath(config));
+    }
+    return limits;
+  } finally {
+    rmSync(lock, { force: true });
   }
-  if (limits) {
-    mkdirSync(config.dataDir, { recursive: true });
-    const tmp = cachePath(config) + ".tmp";
-    writeFileSync(tmp, JSON.stringify(limits, null, 2));
-    renameSync(tmp, cachePath(config));
-  }
-  return limits;
 }
 
 /** Refresh in the background without waiting, for hooks that must return quickly. */
-export function refreshInBackground(launcher: string) {
+export function refreshInBackground(launcher: string, config: Config) {
   try {
+    mkdirSync(config.dataDir, { recursive: true });
+    if (!claimRefreshMarker(join(config.dataDir, "limits-refresh-request"), 2 * 60_000)) return;
     const child = spawn(launcher, ["limits", "--refresh", "--quiet"], { detached: true, stdio: "ignore" });
+    // A missing launcher emits asynchronously; hooks must stay silent then too.
+    child.on("error", () => {});
     child.unref();
   } catch {}
 }
@@ -135,19 +160,19 @@ const sameDir = (a?: string | null, b?: string | null) => !!a && !!b && resolve(
 
 /** The calling session's identity takes precedence over the terminal's login. */
 export function sessionEmail(config: Config, limits: Limits | null = null): string | null {
-  const email = process.env.CLAUDE_CODE_USER_EMAIL?.trim() || config.mainClaudeEmail?.trim();
+  const email = process.env.CLAUDE_CODE_USER_EMAIL?.trim();
   if (email) return email.toLowerCase();
-  return limits?.accounts.find((a) => a.provider === "Claude" && sameDir(a.configDir, config.mainClaudeConfigDir))?.email?.trim().toLowerCase() ?? null;
+  if (!process.env.CLAUDECODE) return null;
+  const dir = process.env.CLAUDE_CONFIG_DIR ?? config.mainClaudeConfigDir;
+  return (limits ?? readSavedLimits(config))?.accounts.find((a) => a.provider === "Claude" && sameDir(a.configDir, dir))?.email?.trim().toLowerCase() || null;
 }
 
 /** The Token Stats account behind a provider, or this session for "main". */
 export function accountFor(limits: Limits | null, providerId: string, config: Config): LimitAccount | undefined {
   if (!limits) return undefined;
   if (providerId === "main") {
-    const email = sessionEmail(config, limits);
-    return limits.accounts.find((a) => a.provider === "Claude" && (email
-      ? a.email?.toLowerCase() === email
-      : sameDir(a.configDir, config.mainClaudeConfigDir)));
+    const email = sessionEmail(config, limits) ?? config.mainClaudeEmail?.trim().toLowerCase();
+    return email ? limits.accounts.find((a) => a.provider === "Claude" && a.email?.trim().toLowerCase() === email) : undefined;
   }
   const claude = config.claudeAccounts[providerId];
   if (claude) return limits.accounts.find((a) => a.provider === "Claude" && a.email?.toLowerCase() === claude.email.toLowerCase());
@@ -201,6 +226,11 @@ export function resetTime(window: LimitWindow, observedAt: Date): Date | null {
   const days = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
   date.setDate(date.getDate() + (days.indexOf(day.toLowerCase()) - date.getDay() + 7) % 7);
   date.setHours(+hour % 12 + (period.toLowerCase() === "pm" ? 12 : 0), +minute, 0, 0);
+  // A just-passed reset can still carry the previous week's percentage. Check
+  // the previous occurrence too, including resets just before midnight.
+  const previous = new Date(date);
+  if (previous > observedAt) previous.setDate(previous.getDate() - 7);
+  if (observedAt.getTime() - previous.getTime() <= 6 * 3600_000) return null;
   if (date <= observedAt) date.setDate(date.getDate() + 7);
   return date;
 }

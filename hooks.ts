@@ -56,10 +56,13 @@ function guidance(state: string): string {
 
 function budgetLine(ctx: HookContext): string {
   const budget = mainBudget(ctx);
-  const identity = sessionEmail(ctx.config, ctx.limits) ?? "an unknown account";
+  const email = sessionEmail(ctx.config, ctx.limits);
+  const identity = email ? `this session runs on ${email}`
+    : ctx.config.mainClaudeEmail ? `using the protected main account ${ctx.config.mainClaudeEmail} (session account unknown)`
+    : "this session's account is unknown";
   return budget.known
-    ? `Plan limits: this session runs on ${identity}, with ${budget.text}, so it's ${budget.state}.`
-    : `Plan limits: this session runs on ${identity}; its limits are unknown right now (is Token Stats running?).`;
+    ? `Plan limits: ${identity}, with ${budget.text}, so it's ${budget.state}.`
+    : `Plan limits: ${identity}; its limits are unknown right now (is Token Stats running?).`;
 }
 
 /** Built-in agents bill this session; local tools and a paused hook always pass. */
