@@ -10,6 +10,7 @@ import { accountFor, headroom, readCachedLimits, refreshInBackground, refreshLim
 import { allowedProviderIds, isEmployerWork, policyRefusal } from "./policy.ts";
 import { allProviders, bestClaude, isSessionProvider, providerById, type Kind } from "./providers.ts";
 import { exitCodeFor, formatRun, isLive, runDelegate, type RunRecord } from "./runner.ts";
+import { collectStats, formatStats } from "./stats.ts";
 import { parseDurationMs } from "./text.ts";
 import { applyPatch, removeWorktree, repoOfWorktree } from "./workspace.ts";
 
@@ -27,6 +28,7 @@ const HELP = `delegate: hand work to your other AI subscriptions
   delegate diff <id>          patch from a --write / implement run
   delegate apply <id> [--3way] apply that patch to the repo it came from
   delegate clean <id>|--all   remove a write run's worktree and branch
+  delegate stats [--days 7] [--since DATE] [--json]   weekly summary of accounts, runs and sessions
   delegate hook pre-tool-use|session-start|user-prompt-submit|pause [1h]|resume|status
   delegate install-hooks | uninstall-hooks
 
@@ -199,6 +201,15 @@ function cmdClean(argv: string[], config: Config) {
   }
 }
 
+async function cmdStats(argv: string[], config: Config) {
+  const { values } = parseArgs({ args: argv, strict: true, options: { days: { type: "string", default: "7" }, since: { type: "string" }, json: { type: "boolean" } } });
+  const until = new Date();
+  const since = values.since ? new Date(values.since) : new Date(until.getTime() - Number(values.days) * 86_400_000);
+  if (Number.isNaN(since.getTime())) fail(values.since ? `can't read the date "${values.since}"` : "--days needs a number");
+  const stats = await collectStats(config, { since, until, projectsDir: join(config.mainClaudeConfigDir, "projects") });
+  console.log(values.json ? JSON.stringify(stats, null, 2) : formatStats(stats));
+}
+
 async function cmdHook(argv: string[], config: Config) {
   const [sub, arg] = argv;
   if (sub === "pause") {
@@ -272,6 +283,7 @@ async function main() {
       process.exit(result.ok ? 0 : 1);
     }
     case "clean": return cmdClean(rest, config);
+    case "stats": return cmdStats(rest, config);
     case "hook": return cmdHook(rest, config);
     case "install-hooks": console.log(installHooks(config)); return;
     case "uninstall-hooks": console.log(uninstallHooks(config)); return;

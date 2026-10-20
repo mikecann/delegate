@@ -81,3 +81,13 @@ test("prompt hook reads cached limits without a provider refresh and tolerates m
   expect(bad.status).toBe(0);
   expect(bad.stdout + bad.stderr).toBe("");
 });
+
+test("stats prints a short report and rejects a bad date", () => {
+  const out = cli(["stats", "--days", "3"]);
+  expect(out.status).toBe(0);
+  expect(out.stdout).toContain("## Delegate runs\nno data");
+  expect(JSON.parse(cli(["stats", "--json"]).stdout).runs).toBeNull();
+  const bad = cli(["stats", "--since", "nonsense"]);
+  expect(bad.status).toBe(2);
+  expect(bad.stderr).toContain(`can't read the date "nonsense"`);
+});
