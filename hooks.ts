@@ -48,9 +48,12 @@ export function mainBudget(ctx: HookContext) {
   return { known: !!(weekly || fiveHour), low, state, weekLeft, behind, text: parts.join(", ") };
 }
 
+// Mike wants Opus doing the building while any Claude account has room.
+const OPUS = " Coding and anything needing judgement goes to Opus with `delegate run --to claude`; only menial jobs go to Codex.";
+
 function guidance(state: string): string {
-  if (state === "on pace") return "Act as the orchestrator: hand big chunks of work (multi-file builds, investigations, reviews, research) to other accounts with `delegate`, and keep this session for planning, decisions, checking results and talking to Mike.";
-  return "Act as the orchestrator: delegate everything but quick edits to other accounts with `delegate`, and keep this session for planning, decisions, checking results and talking to Mike." +
+  if (state === "on pace") return "Act as the orchestrator: hand big chunks of work (multi-file builds, investigations, reviews, research) to other accounts with `delegate`, and keep this session for planning, decisions, checking results and talking to Mike." + OPUS;
+  return "Act as the orchestrator: delegate everything but quick edits to other accounts with `delegate`, and keep this session for planning, decisions, checking results and talking to Mike." + OPUS +
     (state === "well behind" ? " This session is well behind, so built-in sub-agents are blocked." : "");
 }
 

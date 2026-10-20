@@ -13,16 +13,19 @@ Check who's available and how much room each has with `delegate providers`. dele
 
 ## Who to send what
 
+Opus is Mike's workhorse because it makes better choices across the board. While a Claude account has room, Opus does the building and almost everything else. Only truly menial jobs go elsewhere.
+
 | Job | First choice | Backup |
 |---|---|---|
-| Needs Claude's judgement or writing, or a build touching several files | `claude` (Opus on another Claude account) | `codex` |
-| Routine implementation (tests, refactors, mechanical edits) | `codex` (`--kind implement`) | `claude` |
-| Code review, second opinion on a diff | `codex` and `claude` in parallel | `grok`, `muse` |
-| Web research, current events, docs lookups | `grok` (`--kind research`) | `codex` |
-| Finding things in a codebase, "how does X work" | `codex` | `claude` |
+| Any coding: features, fixes, refactors, tests | `claude` (`--kind implement`) | `codex` |
+| Judgement, writing, investigations, "how does X work" | `claude` | `codex` |
+| Code review, second opinion on a diff | `claude` and `codex` in parallel, since two labs catch different things | `grok`, `muse` |
+| Research and docs lookups | `claude` (`--kind research`) | `grok` |
+| Current events, what people are saying on X | `grok` (`--kind research`) | `claude` |
+| Menial, mechanical jobs: bulk renames, reformatting, dependency bumps, quick lookups | `codex` | `grok` |
 | A decision worth several opinions | `delegate consensus` | |
 
-`--to claude` picks whichever allowed Claude account (not this session's) has the most room: usually `claude-cannstudios`, and `claude-convex` in Convex folders. Pick the provider with the most room when two fit.
+`--to claude` picks whichever allowed Claude account (not this session's, and never Mike's main gmail account) has the most room: `claude-cannstudios` for personal work, `claude-convex` in Convex folders. If it says no Claude account has room, fall back to `codex` for the job.
 
 Convex work (any `get-convex` or `convex` org repo, or `~/dev/convex/convex-videos`) may only go to `claude-convex`, and `claude-convex` never gets anything else. delegate enforces this from the working directory. Don't get round it by pasting Convex code into a brief run from somewhere else.
 
@@ -39,7 +42,7 @@ EOF
 - `--kind ask | review | research | implement`. Everything except `implement` is read-only.
 - Read-only runs get a throwaway copy of the repo that includes the user's uncommitted and untracked changes. Your working tree is never touched, even when a CLI ignores its read-only flags (Grok and Muse do).
 - `implement` (or `--write`) runs in its own worktree on a `delegate/<id>` branch and never commits. Review with `delegate diff <id>`, bring it in with `delegate apply <id>` (add `--3way` if it doesn't apply cleanly), then `delegate clean <id>`. Commit anything you want the delegate to build on first, or know that it gets your uncommitted changes as its starting point.
-- Claude delegates use Opus. Pass `--model sonnet` for simple, high-volume jobs. `--effort` passes through to every CLI.
+- Claude delegates use Opus. Don't drop to `--model sonnet` unless the job is genuinely menial. `--effort` passes through to every CLI.
 - `--no-repo` for pure questions that don't need the code. `--in-place` skips the snapshot for read-only work in huge repos, or in a folder that isn't a git repo.
 - `--timeout 30m` (defaults: 20m read, 45m write).
 - The answer comes back capped at 80 lines. `delegate show <id>` prints the full answer, and everything (prompt, raw logs, status.json) is under `~/.delegate/runs/<id>/`.

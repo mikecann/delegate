@@ -8,7 +8,7 @@ macOS
 
 I kept running out of tokens on my main Claude account a day or so before the weekly reset, which is annoying when I've also got Codex, Grok, Muse and other Claude accounts sitting there with loads of room left. When I looked into where the tokens went, most of it was Claude Code's own sub-agents, and those always bill the account you're signed in with.
 
-So delegate lets my main session hand a job to one of the other subscriptions instead. It runs that CLI headless, waits for it, and only gives a short answer back, so the main session doesn't fill up with someone else's transcript. Reviews go to Codex and Grok, research goes to Grok, routine changes go to Codex and so on.
+So delegate lets my main session hand a job to one of the other subscriptions instead. It runs that CLI headless, waits for it, and only gives a short answer back, so the main session doesn't fill up with someone else's transcript. Opus on another Claude account does the building and most other jobs, because it makes better choices. Codex, Grok and Muse get the menial stuff, give second opinions, and cover when the Claude accounts run low.
 
 There's also `delegate consensus`, which asks the same question to one agent from each lab (OpenAI, xAI, Meta, Anthropic) without them seeing each other's answers. Then one that didn't answer reads them all, with the names hidden, and writes up where they agree, where they don't, and the best point only one of them made. It's become my go-to for "hmm, which way should we do this" questions.
 
