@@ -11,7 +11,7 @@ import { formatDuration } from "./text.ts";
  * tokens, so the markdown stays short and the detail lives in --json.
  */
 
-export type StatsOptions = { since: Date; until: Date; projectsDir: string };
+export type StatsOptions = { since: Date; until: Date; projectsDir: string; skipEmployer?: boolean };
 
 /** Desktop app sessions bill the main account; terminal `claude` is another login. */
 const MAIN_ENTRYPOINT = "claude-desktop";
@@ -278,8 +278,13 @@ export async function scanTranscript(path: string, options: { since: Date; until
   return scan;
 }
 
-/** Employer code must never be read into this run, so its folders are skipped by name. */
+/**
+ * Locally, stats only count tokens and tool calls, so employer folders are
+ * included. Inside a delegated run the output goes to another account, so they
+ * are always skipped there, as they are with --skip-employer.
+ */
 export const isEmployerFolder = (name: string) => /convex/i.test(name);
+export const skipEmployerByDefault = () => process.env.DELEGATE_CHILD === "1";
 
 function recentJsonl(dir: string, since: Date): string[] {
   try {
@@ -293,7 +298,7 @@ export async function sessionStats(options: StatsOptions): Promise<SessionStats 
   const stats: SessionStats = { filesRead: 0, skippedFolders: 0, byEntrypoint: {}, top: [] };
   const jobs: Promise<void>[] = [];
   for (const project of readdirSync(options.projectsDir)) {
-    if (isEmployerFolder(project)) { stats.skippedFolders++; continue; }
+    if ((options.skipEmployer || skipEmployerByDefault()) && isEmployerFolder(project)) { stats.skippedFolders++; continue; }
     const dir = join(options.projectsDir, project);
     for (const file of recentJsonl(dir, options.since)) {
       jobs.push(scanSession(project, file, options, stats));

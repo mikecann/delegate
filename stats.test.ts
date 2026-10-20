@@ -3,7 +3,9 @@ import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { historyPath } from "./limits.ts";
 import { collectStats, formatStats, weekSegments } from "./stats.ts";
-import { tempDir, testConfig } from "./test-helpers.ts";
+import { isolateSessionEnv, tempDir, testConfig } from "./test-helpers.ts";
+
+isolateSessionEnv();
 
 const NOW = new Date("2026-10-20T12:00:00Z");
 const SINCE = new Date("2026-10-13T12:00:00Z");
@@ -78,7 +80,7 @@ function dataFixture() {
 
 test("collects accounts, runs and sessions from synthetic data", async () => {
   const config = dataFixture();
-  const stats = await collectStats(config, { since: SINCE, until: NOW, projectsDir: projectsFixture() });
+  const stats = await collectStats(config, { since: SINCE, until: NOW, projectsDir: projectsFixture(), skipEmployer: true });
 
   const main = stats.accounts.find((a) => a.main)!;
   expect(main.account).toBe("Claude me@main.com");
@@ -124,4 +126,16 @@ test("missing files give no data rather than errors", async () => {
 test("a big rise in the weekly window starts a new week", () => {
   const s = (p: number) => ({ at: new Date(), windows: { weekly: p } });
   expect(weekSegments([s(50), s(40), s(45), s(95), s(90)]).map((w) => [w.start, w.end, w.low])).toEqual([[50, 45, 40], [95, 90, 90]]);
+});
+
+test("employer folders are counted locally but skipped with --skip-employer or inside a delegated run", async () => {
+  const config = dataFixture();
+  const dir = projectsFixture();
+  const local = await collectStats(config, { since: SINCE, until: NOW, projectsDir: dir });
+  const skipped = await collectStats(config, { since: SINCE, until: NOW, projectsDir: dir, skipEmployer: true });
+  expect(local.sessions!.skippedFolders).toBe(0);
+  expect(local.sessions!.filesRead).toBe(skipped.sessions!.filesRead + 1);
+  process.env.DELEGATE_CHILD = "1";
+  const child = await collectStats(config, { since: SINCE, until: NOW, projectsDir: dir });
+  expect(child.sessions!.skippedFolders).toBe(1);
 });
