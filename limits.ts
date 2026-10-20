@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { expandHome, type Config } from "./config.ts";
 
@@ -28,6 +28,19 @@ const FRESH_MINUTES = 30;
 const USABLE_HOURS = 6;
 
 export const cachePath = (config: Config) => join(config.dataDir, "limits-cache.json");
+export const historyPath = (config: Config) => join(config.dataDir, "limits-history.jsonl");
+
+/**
+ * One compact line per refresh, so the weekly review can see how each account
+ * burned through its week rather than just where it ended up.
+ */
+export function appendHistory(config: Config, limits: Limits) {
+  const accounts = limits.accounts.map((a) => ({
+    provider: a.provider, email: a.email ?? null,
+    windows: Object.fromEntries(a.windows.map((w) => [w.kind, w.remainingPercent])),
+  }));
+  try { appendFileSync(historyPath(config), JSON.stringify({ at: limits.generatedAt, accounts }) + "\n"); } catch {}
+}
 const tokenStatsFile = (config: Config) => join(config.tokenStatsDir, "limits.json");
 
 function readJson(path: string): any | null {
@@ -95,6 +108,7 @@ export function refreshLimits(config: Config): Limits | null {
       const tmp = cachePath(config) + ".tmp";
       writeFileSync(tmp, JSON.stringify(limits, null, 2));
       renameSync(tmp, cachePath(config));
+      appendHistory(config, limits);
     }
     return limits;
   } finally {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { accountFor, headroom, parseLimitsText } from "./limits.ts";
+import { accountFor, appendHistory, headroom, historyPath, parseLimitsText } from "./limits.ts";
 import { allowedProviderIds, isEmployerWork, policyRefusal } from "./policy.ts";
 import { isolateSessionEnv, limitsFixture, tempDir, testConfig } from "./test-helpers.ts";
 
@@ -90,4 +90,16 @@ Muse Power Usage mike.cann@gmail.com [~/.config/muse]
     expect(headroom(accountFor(limits, "main", config))?.percent).toBe(78);
     expect(headroom(accountFor(limits, "muse", config))).toBeNull();
   });
+});
+
+test("each refresh appends one compact history line per snapshot", () => {
+  const config = testConfig();
+  mkdirSync(config.dataDir, { recursive: true });
+  const limits = limitsFixture();
+  appendHistory(config, limits);
+  appendHistory(config, limits);
+  const lines = readFileSync(historyPath(config), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  expect(lines).toHaveLength(2);
+  expect(lines[0].at).toBe(limits.generatedAt);
+  expect(lines[0].accounts[0].windows.weekly).toBe(limits.accounts[0].windows.find((w) => w.kind === "weekly")!.remainingPercent);
 });
