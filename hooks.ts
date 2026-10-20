@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
-import { accountFor, headroom, resetsLabel, windowOf, type Limits } from "./limits.ts";
+import { isSessionProvider } from "./providers.ts";
+import { accountFor, headroom, resetTime, resetsLabel, sessionEmail, windowOf, type Limits } from "./limits.ts";
 
 export const SUBAGENT_TOOLS = new Set(["Agent", "Task", "Workflow"]);
 
@@ -12,6 +13,7 @@ export type HookContext = {
   allowed: { id: string; percent: number | null }[];
   employerWork: boolean;
   paused: boolean;
+  now?: Date;
 };
 
 function othersText(ctx: HookContext): string {
@@ -26,80 +28,78 @@ export function mainBudget(ctx: HookContext) {
   const main = accountFor(ctx.limits, "main", ctx.config);
   const weekly = windowOf(main, "weekly");
   const fiveHour = windowOf(main, "five_hour");
-  const { blockBelowWeeklyPercent, blockBelowFiveHourPercent } = ctx.config.hook;
-  const low = (!!weekly && weekly.remainingPercent < blockBelowWeeklyPercent) ||
-    (!!fiveHour && fiveHour.remainingPercent < blockBelowFiveHourPercent);
+  const now = ctx.now ?? new Date();
+  const observedAt = ctx.limits ? new Date(ctx.limits.generatedAt) : now;
+  const reset = weekly ? resetTime(weekly, observedAt) : null;
+  const weekLeft = reset && Number.isFinite(reset.getTime())
+    ? Math.max(0, Math.min(100, (reset.getTime() - now.getTime()) / (7 * 86400_000) * 100)) : null;
+  const behind = weekly && weekLeft !== null ? weekLeft - weekly.remainingPercent : null;
+  const thresholds = ctx.config.hook;
+  const floor = (!!weekly && weekly.remainingPercent < thresholds.blockBelowWeeklyPercent) ||
+    (!!fiveHour && fiveHour.remainingPercent < thresholds.blockBelowFiveHourPercent);
+  // Without a reset, preserve the old 40% weekly cutoff as well as configured floors.
+  const low = floor || (behind === null
+    ? !!weekly && weekly.remainingPercent < 40
+    : behind >= thresholds.behindPaceBlockPercent - 1e-9);
+  const state = low ? "well behind" : behind !== null && behind >= thresholds.behindPaceWarnPercent - 1e-9 ? "behind pace" : "on pace";
   const parts: string[] = [];
-  if (weekly) parts.push(`${Math.round(weekly.remainingPercent)}% of its weekly limit left${resetsLabel(weekly) ? ` (${resetsLabel(weekly)})` : ""}`);
+  if (weekly) parts.push(`${Math.round(weekly.remainingPercent)}% of its weekly limit left${weekLeft !== null ? ` and ${Math.round(weekLeft)}% of the week to go` : ""}${resetsLabel(weekly) ? ` (${resetsLabel(weekly)})` : ""}`);
   if (fiveHour) parts.push(`${Math.round(fiveHour.remainingPercent)}% of its 5-hour limit`);
-  return { known: !!(weekly || fiveHour), low, text: parts.join(" and ") };
+  return { known: !!(weekly || fiveHour), low, state, weekLeft, behind, text: parts.join(", ") };
 }
 
-/**
- * PreToolUse on Claude Code's built-in sub-agent tools. Normally it only adds
- * a reminder. When the main account is low it blocks, and the model sees the
- * reason. A description starting with "local:" always gets through, for
- * sub-agents that need this session's own tools.
- */
+function guidance(state: string): string {
+  if (state === "on pace") return "Act as the orchestrator: hand big chunks of work (multi-file builds, investigations, reviews, research) to other accounts with `delegate`, and keep this session for planning, decisions, checking results and talking to Mike.";
+  return "Act as the orchestrator: delegate everything but quick edits to other accounts with `delegate`, and keep this session for planning, decisions, checking results and talking to Mike." +
+    (state === "well behind" ? " This session is well behind, so built-in sub-agents are blocked." : "");
+}
+
+function budgetLine(ctx: HookContext): string {
+  const budget = mainBudget(ctx);
+  const identity = sessionEmail(ctx.config, ctx.limits) ?? "an unknown account";
+  return budget.known
+    ? `Plan limits: this session runs on ${identity}, with ${budget.text}, so it's ${budget.state}.`
+    : `Plan limits: this session runs on ${identity}; its limits are unknown right now (is Token Stats running?).`;
+}
+
+/** Built-in agents bill this session; local tools and a paused hook always pass. */
 export function preToolUse(input: any, ctx: HookContext): object | null {
   const tool = String(input?.tool_name ?? "");
-  if (!SUBAGENT_TOOLS.has(tool) || ctx.paused) return null;
-  const description = String(input?.tool_input?.description ?? "");
-  if (/^\s*local:/i.test(description)) return null;
-
-  const what = tool === "Workflow" ? "workflow" : "sub-agent";
+  if (!SUBAGENT_TOOLS.has(tool) || ctx.paused || process.env.DELEGATE_CHILD === "1") return null;
+  if (/^\s*local:/i.test(String(input?.tool_input?.description ?? ""))) return null;
   const budget = mainBudget(ctx);
-  const others = othersText(ctx);
-
-  if (budget.known && budget.low) {
+  if (budget.low) {
     const escape = tool === "Workflow"
-      ? "If the user really wants this workflow on the main account, they can run `delegate hook pause 1h` first."
-      : "If this sub-agent genuinely needs this session's own tools (the browser, MCP connectors), retry with its description starting with \"local:\".";
-    return {
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason:
-          `Blocked by the delegate hook: the main Claude account has ${budget.text}, and a built-in ${what} would bill it. ` +
-          `Run this work through delegate instead, with Bash and run_in_background: true, e.g. ` +
-          `\`delegate run --to codex --kind research --brief - <<'EOF' ... EOF\` with a self-contained brief. ` +
-          `Accounts with room: ${others}. See the delegate skill for which account suits which job. ${escape}`,
-      },
-    };
+      ? "If the user wants this workflow on this session's account, run `delegate hook pause 1h` first."
+      : `If it needs this session's own tools (browser, MCP connectors), retry with a description starting with "local:".`;
+    return { hookSpecificOutput: {
+      hookEventName: "PreToolUse", permissionDecision: "deny",
+      permissionDecisionReason: `Blocked by the delegate hook. ${budgetLine(ctx)} ${guidance(budget.state)} Run this work through delegate with Bash and run_in_background: true and a self-contained brief. Accounts with room: ${othersText(ctx)}. ${escape}`,
+    } };
   }
-
-  return {
-    hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      additionalContext:
-        `delegate hook: this ${what} bills the main Claude account${budget.known ? `, which has ${budget.text}` : ""}. ` +
-        `Unless it needs this session's own tools, \`delegate\` could run it on another subscription instead (${others}). See the delegate skill.`,
-    },
-  };
+  return { hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext:
+    `${budgetLine(ctx)} Built-in sub-agents bill this session. ${guidance(budget.state)} Other accounts: ${othersText(ctx)}.` } };
 }
 
-/** One short line of budget for the start of every session. */
-export function sessionStart(ctx: HookContext): object {
-  const budget = mainBudget(ctx);
-  const lines: string[] = [];
-  if (budget.known) {
-    lines.push(`Plan limits: the main Claude account has ${budget.text}. Other accounts: ${othersText(ctx)}.`);
-  } else {
-    lines.push(`Plan limits are unknown right now (is Token Stats running?). Other accounts: ${othersText(ctx)}.`);
-  }
-  lines.push(
-    budget.known && budget.low
-      ? "The main account is low, so built-in sub-agents are blocked. Hand sub-agent work, reviews and research to other accounts with `delegate` (see the delegate skill)."
-      : "Built-in sub-agents bill the main account. Prefer handing sub-agent work, reviews and research to other accounts with `delegate` (see the delegate skill).",
-  );
+/** One line of budget and guidance at the start of a session. */
+export function sessionStart(ctx: HookContext): object | null {
+  if (ctx.paused || process.env.DELEGATE_CHILD === "1") return null;
+  let text = `${budgetLine(ctx)} Other accounts: ${othersText(ctx)}. ${guidance(mainBudget(ctx).state)}`;
   if (ctx.employerWork && ctx.config.employer) {
-    lines.push(`This is ${ctx.config.employer.name} work, so its code may only go to: ${ctx.config.employer.allow.join(", ")}.`);
+    text += ` This is ${ctx.config.employer.name} work, so its code may only go to: ${ctx.config.employer.allow.join(", ")}.`;
   }
-  return { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: lines.join(" ") } };
+  return { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: text } };
+}
+
+export function userPromptSubmit(ctx: HookContext): object | null {
+  const budget = mainBudget(ctx);
+  if (ctx.paused || process.env.DELEGATE_CHILD === "1" || budget.state === "on pace") return null;
+  return { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: `${budgetLine(ctx)} ${guidance(budget.state)} Other accounts: ${othersText(ctx)}.` } };
 }
 
 export function allowedWithHeadroom(ids: string[], limits: Limits | null, config: Config) {
-  return ids.map((id) => ({ id, percent: headroom(accountFor(limits, id, config))?.percent ?? null }));
+  return ids.filter((id) => !isSessionProvider(id, config, limits))
+    .map((id) => ({ id, percent: headroom(accountFor(limits, id, config))?.percent ?? null }));
 }
 
 const pauseFile = (config: Config) => join(config.dataDir, "hook-paused-until");

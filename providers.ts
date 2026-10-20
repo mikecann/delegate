@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { home, type Config } from "./config.ts";
+import { join, resolve } from "node:path";
+import { expandHome, home, type Config } from "./config.ts";
+import { accountFor, headroom, readCachedLimits, sessionEmail, type Limits } from "./limits.ts";
 import { DELEGATE_SYSTEM_NOTE } from "./text.ts";
 
 export type Mode = "read" | "write";
@@ -23,7 +24,7 @@ export type RunContext = {
 export type Invocation = {
   command: string;
   args: string[];
-  env?: Record<string, string>;
+  env?: Record<string, string | null>;
   stdin?: string;
 };
 
@@ -36,6 +37,8 @@ export type Parsed = {
 
 export type Provider = {
   id: string;
+  /** Underlying account when consensus gives a model its own seat. */
+  accountId?: string;
   lab: Lab;
   label: string;
   employerOnly?: boolean;
@@ -207,6 +210,8 @@ const CLAUDE_SANDBOX = JSON.stringify({ sandbox: { enabled: true, failIfUnavaila
 
 /** Find the CLAUDE_CONFIG_DIR whose login belongs to this email. */
 export function findClaudeConfigDir(email: string, config: Config): string | null {
+  const live = readCachedLimits(config)?.accounts.find((a) => a.provider === "Claude" && a.email?.toLowerCase() === email.toLowerCase());
+  if (live?.configDir) return resolve(expandHome(live.configDir));
   const accounts = join(config.tokenStatsDir, "Accounts");
   const candidates = existsSync(accounts)
     ? readdirSync(accounts).map((name) => join(accounts, name))
@@ -232,23 +237,27 @@ export function claudeAccount(id: string, email: string, config: Config, employe
     enforcesReadOnly: false,
     sandboxesWrites: true,
     unavailable() {
+      if (isSessionProvider(id, config, readCachedLimits(config))) return "that's the account this session runs on";
       if (!which("claude")) return "claude isn't installed";
       if (!configDir()) return `no Claude login for ${email} (add it in Token Stats with Add account)`;
       return null;
     },
     invocation(ctx) {
       const tools = ctx.mode === "write" ? CLAUDE_WRITE_TOOLS : CLAUDE_READ_TOOLS;
+      const dir = configDir();
+      if (!dir) throw new Error(`no Claude login for ${email} (add it in Token Stats with Add account)`);
       return {
         command: "claude",
         args: [
-          "-p", "--output-format", "json", "--no-session-persistence",
+          "-p", "--output-format", "json", "--no-session-persistence", "--strict-mcp-config",
           "--permission-mode", "dontAsk", "--allowedTools", tools.join(","),
           "--settings", CLAUDE_SANDBOX,
           "--append-system-prompt", DELEGATE_SYSTEM_NOTE,
-          "--model", ctx.model ?? (ctx.top ? "claude-fable-5-1" : "sonnet"),
+          "--model", ctx.model ?? (ctx.top ? "claude-fable-5-1" : "opus"),
           ...(ctx.effort ? ["--effort", ctx.effort] : []),
         ],
-        env: { CLAUDE_CONFIG_DIR: configDir() ?? "" },
+        // Setting even an empty value selects a different keychain login.
+        env: { CLAUDE_CONFIG_DIR: dir === join(home, ".claude") ? null : dir },
         stdin: ctx.prompt,
       };
     },
@@ -277,4 +286,17 @@ export function allProviders(config: Config): Provider[] {
 
 export function providerById(id: string, config: Config): Provider | undefined {
   return allProviders(config).find((p) => p.id === id);
+}
+
+export function isSessionProvider(id: string, config: Config, limits: Limits | null = null): boolean {
+  const email = config.claudeAccounts[id]?.email.trim().toLowerCase();
+  return !!email && email === sessionEmail(config, limits);
+}
+
+/** Callers supply only providers allowed by the employer policy. Unknown quota is last. */
+export function bestClaude(candidates: Provider[], config: Config, limits: Limits | null): Provider | undefined {
+  return candidates.filter((p) => p.lab === "anthropic" && !isSessionProvider(p.accountId ?? p.id, config, limits))
+    .map((p) => ({ p, room: headroom(accountFor(limits, p.accountId ?? p.id, config))?.percent }))
+    .filter(({ room }) => room === undefined || room >= 10)
+    .sort((a, b) => (b.room ?? -1) - (a.room ?? -1))[0]?.p;
 }

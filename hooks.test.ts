@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { allowedWithHeadroom, isPaused, pauseUntil, preToolUse, resume, sessionStart, type HookContext } from "./hooks.ts";
 import { withHooks, withoutHooks } from "./install.ts";
-import { limitsFixture, testConfig, withMainWeekly } from "./test-helpers.ts";
+import { isolateSessionEnv, limitsFixture, testConfig, withMainWeekly } from "./test-helpers.ts";
+
+isolateSessionEnv();
 
 const config = testConfig({ mainClaudeConfigDir: "/home/me/.claude" });
 
 function ctx(limits = limitsFixture(), extra: Partial<HookContext> = {}): HookContext {
-  return { config, limits, allowed: allowedWithHeadroom(["codex", "grok", "claude-gmail"], limits, config), employerWork: false, paused: false, ...extra };
+  return { config, limits, now: new Date(2026, 9, 20, 12), allowed: allowedWithHeadroom(["codex", "grok", "claude-gmail"], limits, config), employerWork: false, paused: false, ...extra };
 }
 
 const agent = (description = "Find the auth code") => ({ tool_name: "Agent", tool_input: { description, prompt: "..." } });
@@ -24,7 +26,9 @@ describe("pre-tool-use", () => {
   });
 
   test("blocks when the weekly limit is low, listing accounts with the most room first", () => {
-    const out: any = preToolUse(agent(), ctx(withMainWeekly(limitsFixture(), 35)));
+    const limits = withMainWeekly(limitsFixture(), 35);
+    limits.accounts[0].windows[1].resetsText = "unknown";
+    const out: any = preToolUse(agent(), ctx(limits));
     expect(out.hookSpecificOutput.permissionDecision).toBe("deny");
     const reason = out.hookSpecificOutput.permissionDecisionReason;
     expect(reason).toContain("35% of its weekly limit");
@@ -60,8 +64,8 @@ describe("pre-tool-use", () => {
 describe("session-start", () => {
   test("gives one line of budget", () => {
     const text = (sessionStart(ctx()) as any).hookSpecificOutput.additionalContext;
-    expect(text).toContain("78% of its weekly limit left (resets Wed 5:00 am)");
-    expect(text).toContain("Prefer handing sub-agent work");
+    expect(text).toContain("78% of its weekly limit left");
+    expect(text).toContain("Act as the orchestrator");
   });
 
   test("mentions the employer rule in employer repos", () => {
@@ -92,6 +96,7 @@ describe("settings merge", () => {
     expect(merged.model).toBe("x");
     expect(merged.hooks.SessionStart).toHaveLength(2);
     expect(merged.hooks.SessionStart[0].hooks[0].command).toBe("sh voice.sh");
+    expect(merged.hooks.UserPromptSubmit[0].hooks[0].command).toContain("user-prompt-submit");
     expect(merged.hooks.PreToolUse[0].matcher).toBe("Agent|Task|Workflow");
   });
 

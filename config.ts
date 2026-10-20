@@ -21,10 +21,11 @@ export type Employer = {
 export type Config = {
   dataDir: string;
   mainClaudeConfigDir: string;
+  mainClaudeEmail?: string | null;
   tokenStatsDir: string;
   claudeAccounts: Record<string, ClaudeAccount>;
   employer: Employer | null;
-  hook: { blockBelowWeeklyPercent: number; blockBelowFiveHourPercent: number };
+  hook: { blockBelowWeeklyPercent: number; blockBelowFiveHourPercent: number; behindPaceWarnPercent: number; behindPaceBlockPercent: number };
   chairPreference: string[];
   panelPreference: string[];
   timeoutMinutes: { read: number; write: number };
@@ -42,8 +43,10 @@ export function defaultConfig(): Config {
   return {
     dataDir: join(home, ".delegate"),
     mainClaudeConfigDir: join(home, ".claude"),
+    mainClaudeEmail: "mike.cann@gmail.com",
     tokenStatsDir: join(home, "Library", "Application Support", "Token Stats"),
     claudeAccounts: {
+      "claude-cannstudios": { email: "mike@cannstudios.com" },
       "claude-gmail": { email: "mike.cann@gmail.com" },
       "claude-convex": { email: "mike.cann@convex.dev", employerOnly: true },
     },
@@ -55,9 +58,9 @@ export function defaultConfig(): Config {
       paths: ["~/dev/convex/convex-videos"],
       allow: ["claude-convex"],
     },
-    hook: { blockBelowWeeklyPercent: 40, blockBelowFiveHourPercent: 15 },
-    chairPreference: ["codex", "claude-gmail", "grok", "muse"],
-    panelPreference: ["codex", "grok", "muse", "claude-gmail"],
+    hook: { blockBelowWeeklyPercent: 10, blockBelowFiveHourPercent: 15, behindPaceWarnPercent: 5, behindPaceBlockPercent: 15 },
+    chairPreference: ["claude", "codex", "grok", "muse"],
+    panelPreference: ["codex", "grok", "muse", "claude"],
     timeoutMinutes: { read: 20, write: 45 },
   };
 }
@@ -74,6 +77,7 @@ export function loadConfig(path = configPath()): Config {
   const merged: Config = {
     ...config,
     ...user,
+    claudeAccounts: { ...config.claudeAccounts, ...user.claudeAccounts },
     hook: { ...config.hook, ...user.hook },
     timeoutMinutes: { ...config.timeoutMinutes, ...user.timeoutMinutes },
   };

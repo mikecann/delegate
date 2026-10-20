@@ -13,7 +13,7 @@ export type ProcessOptions = {
   command: string;
   args: string[];
   cwd: string;
-  env?: Record<string, string>;
+  env?: Record<string, string | null>;
   stdin?: string;
   stdoutFile: string;
   stderrFile: string;
@@ -70,12 +70,18 @@ export function runProcess(options: ProcessOptions): Promise<ProcessResult> {
   const started = Date.now();
   const out = openSync(options.stdoutFile, "w");
   const err = openSync(options.stderrFile, "w");
+  const env = { ...process.env };
+  for (const [key, value] of Object.entries(options.env ?? {})) {
+    if (value === null) delete env[key];
+    else env[key] = value;
+  }
+  env.DELEGATE_CHILD = "1";
   return new Promise((resolve) => {
     let timedOut = false;
     let settled = false;
     const child = spawn(options.command, options.args, {
       cwd: options.cwd,
-      env: { ...process.env, ...options.env },
+      env,
       stdio: ["pipe", out, err],
       detached: true,
     });

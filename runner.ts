@@ -65,7 +65,7 @@ process.on("exit", () => {
 export function newId(prefix: string): string {
   const now = new Date();
   const stamp = now.toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
-  return `${stamp}-${prefix}-${randomBytes(2).toString("hex")}`;
+  return `${stamp}-${prefix.replace(/[^A-Za-z0-9._-]/g, "-")}-${randomBytes(2).toString("hex")}`;
 }
 
 export async function runDelegate(options: RunOptions, config: Config): Promise<RunRecord> {

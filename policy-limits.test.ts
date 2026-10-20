@@ -3,7 +3,9 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { accountFor, headroom, parseLimitsText } from "./limits.ts";
 import { allowedProviderIds, isEmployerWork, policyRefusal } from "./policy.ts";
-import { limitsFixture, tempDir, testConfig } from "./test-helpers.ts";
+import { isolateSessionEnv, limitsFixture, tempDir, testConfig } from "./test-helpers.ts";
+
+isolateSessionEnv();
 
 const providers = [{ id: "codex" }, { id: "grok" }, { id: "claude-gmail" }, { id: "claude-convex", employerOnly: true }];
 

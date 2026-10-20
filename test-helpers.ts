@@ -1,3 +1,4 @@
+import { beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +13,7 @@ export function tempDir(prefix = "delegate-test-"): string {
 
 export function testConfig(overrides: Partial<Config> = {}): Config {
   const root = tempDir();
-  return { ...defaultConfig(), dataDir: join(root, "data"), tokenStatsDir: join(root, "token-stats"), mainClaudeConfigDir: "/home/me/.claude", ...overrides };
+  return { ...defaultConfig(), dataDir: join(root, "data"), tokenStatsDir: join(root, "token-stats"), mainClaudeConfigDir: "/home/me/.claude", mainClaudeEmail: "me@main.com", ...overrides };
 }
 
 export function git(cwd: string, ...args: string[]) {
@@ -67,4 +68,22 @@ export function withMainWeekly(limits: Limits, percent: number): Limits {
   const copy = structuredClone(limits);
   copy.accounts[0].windows[1].remainingPercent = percent;
   return copy;
+}
+
+/** Tests must not inherit the desktop session's identity or nesting flag. */
+export function isolateSessionEnv() {
+  let email: string | undefined;
+  let child: string | undefined;
+  beforeEach(() => {
+    email = process.env.CLAUDE_CODE_USER_EMAIL;
+    child = process.env.DELEGATE_CHILD;
+    delete process.env.CLAUDE_CODE_USER_EMAIL;
+    delete process.env.DELEGATE_CHILD;
+  });
+  afterEach(() => {
+    if (email === undefined) delete process.env.CLAUDE_CODE_USER_EMAIL;
+    else process.env.CLAUDE_CODE_USER_EMAIL = email;
+    if (child === undefined) delete process.env.DELEGATE_CHILD;
+    else process.env.DELEGATE_CHILD = child;
+  });
 }

@@ -133,11 +133,21 @@ export function parseLimitsText(text: string, config: Config): LimitAccount[] {
 
 const sameDir = (a?: string | null, b?: string | null) => !!a && !!b && resolve(expandHome(a)) === resolve(expandHome(b));
 
-/** The Token Stats account behind a delegate provider, or the main Claude login for "main". */
+/** The calling session's identity takes precedence over the terminal's login. */
+export function sessionEmail(config: Config, limits: Limits | null = null): string | null {
+  const email = process.env.CLAUDE_CODE_USER_EMAIL?.trim() || config.mainClaudeEmail?.trim();
+  if (email) return email.toLowerCase();
+  return limits?.accounts.find((a) => a.provider === "Claude" && sameDir(a.configDir, config.mainClaudeConfigDir))?.email?.trim().toLowerCase() ?? null;
+}
+
+/** The Token Stats account behind a provider, or this session for "main". */
 export function accountFor(limits: Limits | null, providerId: string, config: Config): LimitAccount | undefined {
   if (!limits) return undefined;
   if (providerId === "main") {
-    return limits.accounts.find((a) => a.provider === "Claude" && sameDir(a.configDir, config.mainClaudeConfigDir));
+    const email = sessionEmail(config, limits);
+    return limits.accounts.find((a) => a.provider === "Claude" && (email
+      ? a.email?.toLowerCase() === email
+      : sameDir(a.configDir, config.mainClaudeConfigDir)));
   }
   const claude = config.claudeAccounts[providerId];
   if (claude) return limits.accounts.find((a) => a.provider === "Claude" && a.email?.toLowerCase() === claude.email.toLowerCase());
@@ -170,4 +180,27 @@ export function resetsLabel(window?: LimitWindow): string {
 
 export function hasTokenStats(config: Config): boolean {
   return existsSync(config.tokenStatsDir) || !!Bun.which("token-stats");
+}
+
+/** Text resets are relative to the snapshot, never to the time a hook reads it. */
+export function resetTime(window: LimitWindow, observedAt: Date): Date | null {
+  if (window.resetsAt) {
+    const date = new Date(window.resetsAt);
+    if (Number.isFinite(date.getTime())) return date;
+  }
+  const text = window.resetsText?.replace(/\s+/g, " ").trim() ?? "";
+  const relative = /^resets in (?:(\d+)h(?: )?)?(?:(\d+)m)?$/i.exec(text);
+  if (relative && (relative[1] || relative[2])) {
+    return new Date(observedAt.getTime() + (Number(relative[1] ?? 0) * 60 + Number(relative[2] ?? 0)) * 60_000);
+  }
+  const weekday = /^resets (Sun|Mon|Tue|Wed|Thu|Fri|Sat) (\d{1,2}):(\d{2}) (am|pm)$/i.exec(text);
+  if (!weekday) return null;
+  const [, day, hour, minute, period] = weekday;
+  if (+hour < 1 || +hour > 12 || +minute > 59) return null;
+  const date = new Date(observedAt);
+  const days = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  date.setDate(date.getDate() + (days.indexOf(day.toLowerCase()) - date.getDay() + 7) % 7);
+  date.setHours(+hour % 12 + (period.toLowerCase() === "pm" ? 12 : 0), +minute, 0, 0);
+  if (date <= observedAt) date.setDate(date.getDate() + 7);
+  return date;
 }

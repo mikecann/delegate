@@ -1,6 +1,8 @@
 {
+  "mainClaudeEmail": "mike.cann@gmail.com",
   "claudeAccounts": {
     "claude-gmail": { "email": "mike.cann@gmail.com" },
+    "claude-cannstudios": { "email": "mike@cannstudios.com" },
     "claude-convex": { "email": "mike.cann@convex.dev", "employerOnly": true }
   },
   "employer": {
@@ -9,8 +11,13 @@
     "paths": ["~/dev/convex/convex-videos"],
     "allow": ["claude-convex"]
   },
-  "hook": { "blockBelowWeeklyPercent": 40, "blockBelowFiveHourPercent": 15 },
-  "chairPreference": ["codex", "claude-gmail", "grok", "muse"],
-  "panelPreference": ["codex", "grok", "muse", "claude-gmail"],
+  "hook": {
+    "behindPaceWarnPercent": 5,
+    "behindPaceBlockPercent": 15,
+    "blockBelowWeeklyPercent": 10,
+    "blockBelowFiveHourPercent": 15
+  },
+  "chairPreference": ["claude", "codex", "grok", "muse"],
+  "panelPreference": ["codex", "grok", "muse", "claude"],
   "timeoutMinutes": { "read": 20, "write": 45 }
 }

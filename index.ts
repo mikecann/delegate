@@ -4,11 +4,11 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { configPath, loadConfig, type Config } from "./config.ts";
 import { formatConsensus, runConsensus } from "./consensus.ts";
-import { allowedWithHeadroom, isPaused, pausedUntil, pauseUntil, preToolUse, resume, sessionStart } from "./hooks.ts";
+import { allowedWithHeadroom, isPaused, pausedUntil, pauseUntil, preToolUse, resume, sessionStart, userPromptSubmit } from "./hooks.ts";
 import { installHooks, uninstallHooks } from "./install.ts";
 import { accountFor, headroom, readCachedLimits, refreshInBackground, refreshLimits, resetsLabel, type Limits } from "./limits.ts";
 import { allowedProviderIds, isEmployerWork, policyRefusal } from "./policy.ts";
-import { allProviders, providerById, type Kind } from "./providers.ts";
+import { allProviders, bestClaude, isSessionProvider, providerById, type Kind } from "./providers.ts";
 import { exitCodeFor, formatRun, isLive, runDelegate, type RunRecord } from "./runner.ts";
 import { parseDurationMs } from "./text.ts";
 import { applyPatch, removeWorktree, repoOfWorktree } from "./workspace.ts";
@@ -20,14 +20,14 @@ const HELP = `delegate: hand work to your other AI subscriptions
   delegate run --to <provider> [--kind ask|review|research|implement] [brief text | --brief FILE | --brief -]
       [--write] [--in-place] [--no-repo] [--timeout 30m] [--model M] [--effort E] [--json]
   delegate consensus [question | --brief FILE | --brief -] [--panel a,b,c] [--chair id|self] [--all]
-      [--deep] [--devil] [--no-repo] [--kind ask|review|research] [--words 400] [--timeout 20m]
+      [--wide] [--deep] [--devil] [--no-repo] [--kind ask|review|research] [--words 400] [--timeout 20m]
   delegate providers          who's available here, and how much room each has
   delegate limits [--refresh] plan limits from Token Stats
   delegate show <id>          full answer of a run
   delegate diff <id>          patch from a --write / implement run
   delegate apply <id> [--3way] apply that patch to the repo it came from
   delegate clean <id>|--all   remove a write run's worktree and branch
-  delegate hook pre-tool-use|session-start|pause [1h]|resume|status
+  delegate hook pre-tool-use|session-start|user-prompt-submit|pause [1h]|resume|status
   delegate install-hooks | uninstall-hooks
 
 Read-only runs work in a throwaway copy of the repo (with your uncommitted
@@ -57,7 +57,7 @@ function candidates(cwd: string, config: Config) {
 }
 
 function limitsForRouting(config: Config): Limits | null {
-  return readCachedLimits(config) ?? null;
+  return readCachedLimits(config) ?? refreshLimits(config);
 }
 
 async function cmdRun(argv: string[], config: Config) {
@@ -73,8 +73,15 @@ async function cmdRun(argv: string[], config: Config) {
   if (!values.to) fail(`say who to send it to with --to (${allProviders(config).map((p) => p.id).join(", ")})`);
   const kind = values.kind as Kind;
   if (!KINDS.includes(kind)) fail(`--kind must be one of ${KINDS.join(", ")}`);
-  const provider = providerById(values.to, config) ?? fail(`unknown provider "${values.to}". Try \`delegate providers\`.`);
   const cwd = process.cwd();
+  const cached = readCachedLimits(config);
+  if (isSessionProvider(values.to, config, cached)) fail(`${values.to}: that's the account this session runs on`);
+  const limits = values.to === "claude" || config.claudeAccounts[values.to]
+    ? cached ?? refreshLimits(config) : cached;
+  const provider = values.to === "claude"
+    ? bestClaude(candidates(cwd, config), config, limits) ?? fail("no allowed, non-self Claude account with enough headroom is available here. Try `delegate providers`.")
+    : providerById(values.to, config) ?? fail(`unknown provider "${values.to}". Try \`delegate providers\`.`);
+  if (isSessionProvider(provider.id, config, limits)) fail(`${provider.id}: that's the account this session runs on`);
   const refusal = policyRefusal(provider.id, cwd, config, allProviders(config));
   if (refusal) fail(refusal);
   const why = provider.unavailable();
@@ -96,7 +103,7 @@ async function cmdConsensus(argv: string[], config: Config) {
   const { values, positionals } = parseArgs({
     args: argv, allowPositionals: true, strict: true,
     options: {
-      brief: { type: "string" }, panel: { type: "string" }, chair: { type: "string" }, all: { type: "boolean" },
+      brief: { type: "string" }, panel: { type: "string" }, chair: { type: "string" }, all: { type: "boolean" }, wide: { type: "boolean" },
       deep: { type: "boolean" }, devil: { type: "boolean" }, "no-repo": { type: "boolean" },
       kind: { type: "string", default: "ask" }, words: { type: "string", default: "400" }, timeout: { type: "string" },
     },
@@ -110,7 +117,7 @@ async function cmdConsensus(argv: string[], config: Config) {
     const result = await runConsensus({
       question, cwd, kind,
       panel: values.panel?.split(",").map((s) => s.trim()).filter(Boolean),
-      chair: values.chair, all: values.all, deep: values.deep, devil: values.devil, noRepo: values["no-repo"],
+      chair: values.chair, all: values.all, wide: values.wide, deep: values.deep, devil: values.devil, noRepo: values["no-repo"],
       maxWords: Number(values.words),
       timeoutMs: values.timeout ? parseDurationMs(values.timeout) : undefined,
     }, candidates(cwd, config), config, limits);
@@ -129,12 +136,13 @@ function cmdProviders(config: Config) {
   if (employer && config.employer) console.log(`This is ${config.employer.name} work: only ${config.employer.allow.join(", ")} may receive its code.\n`);
   const main = headroom(accountFor(limits, "main", config));
   console.log(`main Claude account: ${main ? `${Math.round(main.percent)}% (${main.window.title}${resetsLabel(main.window) ? `, ${resetsLabel(main.window)}` : ""})` : "unknown"}\n`);
+  const idWidth = Math.max(14, ...providers.map((p) => p.id.length + 1));
   for (const p of providers) {
     const why = p.unavailable();
     const room = headroom(accountFor(limits, p.id, config));
-    const state = !allowed.has(p.id) ? "not allowed here" : why ? why : "ready";
+    const state = isSessionProvider(p.id, config, limits) ? "this session" : !allowed.has(p.id) ? "not allowed here" : why ? why : "ready";
     const roomText = room ? `${Math.round(room.percent)}% ${room.window.title.toLowerCase()}` : "room unknown";
-    console.log(`${p.id.padEnd(14)} ${p.lab.padEnd(10)} ${state === "ready" ? roomText.padEnd(18) : "".padEnd(18)} ${state}`);
+    console.log(`${p.id.padEnd(idWidth)} ${p.lab.padEnd(10)} ${state === "ready" ? roomText.padEnd(18) : "".padEnd(18)} ${state}`);
   }
   if (limits) console.log(`\nlimits from ${limits.source}, ${limits.generatedAt}`);
 }
@@ -205,7 +213,7 @@ async function cmdHook(argv: string[], config: Config) {
     console.log(until ? `paused until ${until.toLocaleString()}` : "active");
     return;
   }
-  if (sub !== "pre-tool-use" && sub !== "session-start") fail("hook needs pre-tool-use, session-start, pause, resume or status");
+  if (!["pre-tool-use", "session-start", "user-prompt-submit"].includes(sub)) fail("hook needs pre-tool-use, session-start, user-prompt-submit, pause, resume or status");
 
   // Hooks must never break a session: any error means "no opinion".
   try {
@@ -218,19 +226,23 @@ async function cmdHook(argv: string[], config: Config) {
     const employerWork = isEmployerWork(cwd, config);
     const ids = allowedProviderIds(cwd, config, providers, employerWork);
     const ctx = { config, limits, allowed: allowedWithHeadroom(ids, limits, config), employerWork, paused: isPaused(config) };
-    const output = sub === "pre-tool-use" ? preToolUse(input, ctx) : sessionStart(ctx);
+    const output = sub === "pre-tool-use" ? preToolUse(input, ctx) : sub === "user-prompt-submit" ? userPromptSubmit(ctx) : sessionStart(ctx);
     if (output) console.log(JSON.stringify(output));
   } catch {}
 }
 
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
+  if (process.env.DELEGATE_CHILD === "1") {
+    if (command === "hook") return;
+    if (command === "run" || command === "consensus") fail("nested delegation is disabled (DELEGATE_CHILD=1)");
+  }
   let config: Config;
   try {
     config = loadConfig();
   } catch (e) {
     // A broken config must never break a Claude Code session through the hooks.
-    if (command === "hook" && (rest[0] === "pre-tool-use" || rest[0] === "session-start")) process.exit(0);
+    if (command === "hook") process.exit(0);
     fail(`couldn't read the config at ${configPath()}: ${(e as Error).message}`);
   }
   switch (command) {

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { home, type Config } from "./config.ts";
 
 const COMMAND = '"$HOME/.local/bin/delegate" hook';
-const OURS = /delegate"?\s+hook\s+(pre-tool-use|session-start)/;
+const OURS = /delegate"?\s+hook\s+(pre-tool-use|session-start|user-prompt-submit)/;
 
 type HookEntry = { matcher?: string; hooks: { type: string; command: string; timeout?: number }[] };
 type Settings = { hooks?: Record<string, HookEntry[]> } & Record<string, unknown>;
@@ -18,7 +18,7 @@ function stripOurs(entries: HookEntry[] = []): HookEntry[] {
     .filter((e) => e.hooks.length);
 }
 
-/** Pure merge, for tests: our two hooks replace any earlier copies of themselves. */
+/** Pure merge, for tests: our hooks replace any earlier copies of themselves. */
 export function withHooks(settings: Settings): Settings {
   const hooks = { ...(settings.hooks ?? {}) };
   hooks.SessionStart = [
@@ -28,6 +28,10 @@ export function withHooks(settings: Settings): Settings {
   hooks.PreToolUse = [
     ...stripOurs(hooks.PreToolUse),
     { matcher: "Agent|Task|Workflow", hooks: [{ type: "command", command: `${COMMAND} pre-tool-use`, timeout: 10 }] },
+  ];
+  hooks.UserPromptSubmit = [
+    ...stripOurs(hooks.UserPromptSubmit),
+    { hooks: [{ type: "command", command: `${COMMAND} user-prompt-submit`, timeout: 10 }] },
   ];
   return { ...settings, hooks };
 }
@@ -61,7 +65,7 @@ function rewrite(config: Config, change: (s: Settings) => Settings): string {
 
 export function installHooks(config: Config): string {
   const path = rewrite(config, withHooks);
-  return `Added delegate's SessionStart and PreToolUse hooks to ${path.replace(home, "~")} (a backup is in backups/).`;
+  return `Added delegate's SessionStart, PreToolUse and UserPromptSubmit hooks to ${path.replace(home, "~")} (a backup is in backups/).`;
 }
 
 export function uninstallHooks(config: Config): string {
