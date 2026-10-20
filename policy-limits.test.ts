@@ -17,6 +17,11 @@ describe("employer policy", () => {
     expect(isEmployerWork("/tmp", config, ["ssh://git@github.com:443/get-convex/backend.git"])).toBe(true);
   });
 
+  test("a convex remote (the org's new name) is employer work too", () => {
+    expect(isEmployerWork("/tmp", config, ["https://github.com/convex/batched-replay.git"])).toBe(true);
+    expect(isEmployerWork("/tmp", config, ["git@github.com:convex/batch-worker.git"])).toBe(true);
+  });
+
   test("Mike's own repos about Convex aren't", () => {
     expect(isEmployerWork("/tmp", config, ["https://github.com/mikecann/convex-playground-local.git"])).toBe(false);
   });

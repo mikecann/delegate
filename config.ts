@@ -49,7 +49,9 @@ export function defaultConfig(): Config {
     },
     employer: {
       name: "Convex",
-      remotes: ["github\\.com(?::\\d+)?[:/]get-convex/"],
+      // Convex's GitHub org was renamed from get-convex to convex (Oct 2026);
+      // old remotes still redirect, so match both.
+      remotes: ["github\\.com(?::\\d+)?[:/](?:get-)?convex/"],
       paths: ["~/dev/convex/convex-videos"],
       allow: ["claude-convex"],
     },
