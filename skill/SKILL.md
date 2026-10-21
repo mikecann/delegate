@@ -189,7 +189,7 @@ Pick the lowest level the job needs. Flags for each CLI are in [reference/comman
 | Write | Edit files inside its worktree, run builds and tests in a sandbox, no network | Implementation |
 | Write + network | Write plus outbound HTTP | Builds that install packages or call a live service |
 | Full access | No sandbox, no approvals, the whole machine | Only after Mike says yes in chat for this specific job |
-| Browser (Codex) | Codex drives Mike's real Chrome headless, with his sign-ins | Only after Mike says yes in chat for this specific job |
+| Browser (Codex) | Codex drives Mike's real Chrome headless, with his sign-ins | Real sites, anything needing his sign-ins, anything Claude's browser tools refuse. Reading and checking needs no yes; see below |
 
 | CLI | Read-only | Network | Write | Full access |
 |---|---|---|---|---|
@@ -202,7 +202,8 @@ The risks, plainly:
 
 - Codex's and Grok's sandboxes can read the whole disk, including keys and other projects. Give one of them network too and a web page with injected instructions could, in theory, get a file sent out. Grok always has network on macOS, so don't send it jobs that touch secrets. Only give Codex or Claude network when the job needs it.
 - Write levels keep writes inside the worktree, but a delegate can still run whatever it likes there, including scripts from the repo.
-- Full access and the Codex browser drop every guard. Ask Mike first, for that specific job, and quote his yes in the brief (e.g. `Mike approved full access for this job in chat: "yes go for it"`). Approval for one job doesn't carry to the next.
+- Full access drops every guard. Ask Mike first, for that specific job, and quote his yes in the brief (e.g. `Mike approved full access for this job in chat: "yes go for it"`). Approval for one job doesn't carry to the next.
+- The Codex browser acts in Mike's real Chrome with his sign-ins. Reading and checking pages needs no yes. Ask before it posts, sends, buys, deletes or changes account settings, unless Mike already asked for exactly that, and quote his ask in the brief. Spell out in the brief what it may do and where it must stop.
 
 ## Writing the brief
 
@@ -256,10 +257,10 @@ For a decision worth several opinions, send the same neutral question to Codex, 
 
 ## When not to delegate
 
-- The task needs this session's own tools: MCP connectors (Notion, Slack, Gmail), the desktop app, this session's browser. Do it here.
+- The task needs this session's own tools: MCP connectors (Notion, Slack, Gmail), the desktop app, this session's browser pane for localhost previews. Do it here.
 - It's quicker to do yourself than to write the brief: a single grep, a one-line fix.
 - It's Convex work and the Convex account isn't signed in or has no room.
-- Browsing: Codex can browse headless with `--approve-for-me`, but it acts in Mike's real Chrome with his sign-ins, so it needs his OK for that job. Account and permission changes need a live yes from Mike under Codex's own browser rules, which a headless run can't get, so do those in this session's browser instead.
+- Browsing real sites isn't a reason to keep a job: Codex browses headless with `--approve-for-me` (see Access levels for when to ask). Don't use the Claude in Chrome extension, since it needs its side panel open the whole time, and don't tell Mike something can't be done in a browser until Codex has tried. The exception is account and permission changes, which need a live yes from Mike under Codex's own browser rules that a headless run can't get. Set those up for him in the Codex app or this session's browser pane and tell him what to click.
 
 ## If something goes wrong
 

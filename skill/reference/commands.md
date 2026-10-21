@@ -39,7 +39,7 @@ clean codex exec --skip-git-repo-check --ephemeral -C "$DIR" -s workspace-write 
 
 Add `-c sandbox_workspace_write.network_access=true` for write plus network.
 
-Browser, with approvals answered by an AI reviewer (only with Mike's yes for this job): drop `-c approval_policy='"never"'` and add `--approve-for-me`. It opens pages in Mike's real Chrome, headless. With `approval_policy="never"` the browser is declined ("The origin approval gate did not grant access").
+Browser, with approvals answered by an AI reviewer (the skill's Access levels section says when Mike needs to say yes first). Run it in an empty run folder: drop `-c approval_policy='"never"'` and add `--approve-for-me`. It opens pages in Mike's real Chrome, headless. With `approval_policy="never"` the browser is declined ("The origin approval gate did not grant access").
 
 Full access (only with Mike's yes for this job): drop `-s ...` and `-c approval_policy=...`, add `--dangerously-bypass-approvals-and-sandbox`. This can use the browser too.
 
