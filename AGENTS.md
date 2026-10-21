@@ -1,32 +1,20 @@
 # Agent guidance
 
-This repo is delegate, a Bun and TypeScript CLI that hands work from a main
-Claude Code session to other AI coding CLIs (Codex, Grok, Muse, other Claude
-accounts) and runs multi-lab consensus panels. It also installs Claude Code
-hooks and a skill.
+This repo is delegate, a skill that tells a main Claude Code session how to hand work to Mike's other AI subscriptions by calling their CLIs directly (`codex`, `claude`, `grok`, `muse`), and how to run multi-lab consensus panels by hand. There's no code: just the skill in `skill/`, and `install.sh` / `uninstall.sh`, which link it into `~/.claude/skills` and `~/.codex/skills`.
 
-## Development rules
+It used to be a Bun CLI with hooks. That code lives only in git history now. Don't bring it back.
 
-- Write or update the test first for non-trivial changes, then implement.
-- Run `bun test` and `bun run typecheck` before committing.
-- Tests must never call a real AI CLI or spend tokens. Use `fakeProvider` from
-  `test-helpers.ts` and throwaway repos from `tempRepo()`.
-- Never touch the caller's working tree from a read-only run. Read-only work
-  runs in a snapshot worktree unless `--in-place` is passed.
-- Write runs never commit or push for the user, and must leave the patch for
-  the orchestrator to review (`delegate diff` / `apply`).
-- Hooks must be fast and must never break a session: read files only, no
-  network, and swallow errors (no output means "no opinion").
-- The employer policy in `policy.ts` is the guard that keeps work code with the
-  work account. Don't add a bypass flag.
-- When you change a provider's flags, smoke-test that provider live from a
-  disposable repo, in both read and write mode, and check its sandbox claims
-  (CLIs' read-only flags have turned out not to be reliable).
-- Keep what goes back to the orchestrator short. Full output belongs in the run
-  folder, not on stdout.
+## Rules
+
+- Every command line in the skill must have been run live before it goes in. Note the CLI version it was checked with in `skill/reference/commands.md`, and update that header when you re-check.
+- When you change a CLI's flags, check its sandbox claims live from a disposable repo, in read and write mode. CLIs' read-only flags have turned out not to be reliable.
+- Shell snippets that don't call an AI CLI (snapshots, worktrees, diff, apply, the Convex check) get tested in a throwaway git repo under `$TMPDIR`, including uncommitted and untracked changes.
+- Never point a real AI CLI at the user's working tree from a read-only job. Use a snapshot worktree, except Codex with `-s read-only`.
+- Write jobs never commit or push. The orchestrator reviews the patch and applies it.
+- Keep the Convex rule intact: Convex work only goes to the Convex Claude account, and that account gets nothing else. Never route anything to mike.cann@gmail.com.
+- Test `install.sh` and `uninstall.sh` with `HOME` pointed at a temp folder, never your real one.
 
 ## Writing
 
-README and PR text are written in Mike's voice. Read the mike-voice skill
-before writing them. `skill/SKILL.md` is instructions for agents: plain and
-direct.
+- `skill/SKILL.md` and `skill/reference/` are instructions for agents: plain and direct. Keep SKILL.md readable and put long command lists in the references.
+- README and PR text are written in Mike's voice. Read the mike-voice skill before writing them.

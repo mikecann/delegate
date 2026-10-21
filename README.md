@@ -1,6 +1,6 @@
 # delegate
 
-Hand work from your main Claude Code session to your other AI subscriptions, and get a second (and third, and fourth) opinion on things
+A skill that lets your main Claude Code session hand work to your other AI subscriptions, and get a second (and third, and fourth) opinion on things
 
 macOS
 
@@ -8,20 +8,21 @@ macOS
 
 I kept running out of tokens on my main Claude account a day or so before the weekly reset, which is annoying when I've also got Codex, Grok, Muse and other Claude accounts sitting there with loads of room left. When I looked into where the tokens went, most of it was Claude Code's own sub-agents, and those always bill the account you're signed in with.
 
-So delegate lets my main session hand a job to one of the other subscriptions instead. It runs that CLI headless, waits for it, and only gives a short answer back, so the main session doesn't fill up with someone else's transcript. Opus on another Claude account does the building and most other jobs, because it makes better choices. Codex, Grok and Muse get the menial stuff, give second opinions, and cover when the Claude accounts run low.
+So this skill teaches my main session to hand jobs to the other subscriptions instead, by running their CLIs headless and only reading back a short answer. Opus on another Claude account does the building and most other jobs, because it makes better choices. Codex, Grok and Muse get the menial stuff, give second opinions, and cover when the Claude accounts run low.
 
-There's also `delegate consensus`, which asks the same question to one agent from each lab (OpenAI, xAI, Meta, Anthropic) without them seeing each other's answers. Then one that didn't answer reads them all, with the names hidden, and writes up where they agree, where they don't, and the best point only one of them made. It's become my go-to for "hmm, which way should we do this" questions.
+This used to be a CLI, with hooks and a stats command and whatnot. The trouble was it ran every job with the same locked down permissions, so Codex couldn't even resolve DNS on a research job, and its browser got every site declined. So rather than bolting more and more permission flags onto it, I've gone with letting my main session call `codex`, `claude`, `grok` and `muse` itself, with whatever permissions the job actually needs, and a skill that tells it how. The old CLI lives on in the git history.
 
-Claude Code hooks keep it honest. At the start of each session they say which account the session bills and how much room each account has. They compare the weekly budget left with the time until reset, so 43% left with 38% of the week to go is fine. If I'm falling behind, each prompt gets a reminder to delegate everything but quick edits. Well behind, built-in sub-agents get blocked.
+## What the skill covers
 
-Some things it's careful about:
+- Which of my accounts to use for what, and checking who has room left with [Token Stats](https://github.com/mikecann/token-stats) (`token-stats limits`). It never touches my main account, or the one the session is running on.
+- Keeping work code with the work account. Anything Convex only goes to my Convex Claude account, and that account never gets anything else.
+- Stripping the parent session's Claude environment variables, which otherwise make a child `claude` run as the wrong account. That one caught me out for a while.
+- Where each job runs. Read-only jobs get a throwaway copy of the repo with your uncommitted changes in it, because I found Grok and Muse would still write files when asked to stay read-only. Write jobs get their own worktree and branch, never commit, and come back as a patch you look at before applying.
+- Access levels, from read-only up to network, write and full access, with the exact flags for each CLI that I've actually tested. Full access and Codex driving my real Chrome only happen once I've said yes for that job.
+- A preamble for every brief, so delegates don't answer as if I'm sitting there, or hand the job off again to yet another agent.
+- Consensus panels by hand. The same question goes to Codex, Grok, Muse and Opus without them seeing each other's answers, then a fresh Fable reads them all with the names hidden and writes up where they agree, where they don't, and the best point only one of them made. It's become my go-to for "hmm, which way should we do this" questions.
 
-- **Your working tree is safe.** Read-only jobs run in a throwaway copy of the repo that includes your uncommitted changes. I found Grok and Muse would still write files when asked to stay read-only, so I don't rely on their flags.
-- **Changes come back as a patch.** Write jobs get their own worktree and branch, never commit, and you look at the diff before applying it.
-- **Runaway jobs get stopped.** Every job has a timeout, and on timeout everything it started gets killed.
-- **Work code stays with the work account.** Anything in my employer's repos (Convex) only goes to my Convex Claude account, and that account never gets anything else. Change `employer` in the config to suit you.
-
-It reads plan limits from [Token Stats](https://github.com/mikecann/token-stats), my menu bar app that tracks all my AI subscriptions. It works without it too, it just can't tell you how much room each account has.
+It's all pretty specific to my accounts and setup, so you'll want to change the account table and the Convex rule in `skill/SKILL.md` to suit yours.
 
 ## Get it
 
@@ -29,11 +30,12 @@ Paste this into your AI coding agent (Claude Code, Codex, Cursor...):
 
 > Clone https://github.com/mikecann/delegate and make it my own. It's one of Mike
 > Cann's personal tools, so read the README first, change anything specific to his
-> setup to suit mine (especially config.example.json), then help me get it running.
+> setup in skill/SKILL.md to suit mine (the accounts and the Convex rule especially),
+> then help me get it installed.
 
 ### Or set it up by hand
 
-You'll need [Bun](https://bun.sh), Git, and whichever of these CLIs you have, signed in: [Codex](https://github.com/openai/codex) (`codex login`), Grok Build (`grok login`), Muse Code (`muse login`), and [Claude Code](https://claude.com/claude-code). Claude accounts are matched by email to login directories in Token Stats' saved limits data, even when the snapshot is too old for budget checks, with its Accounts folder as a fallback. The defaults are `claude-gmail` (mike.cann@gmail.com), `claude-cannstudios` (mike@cannstudios.com) and the work-only `claude-convex` (mike.cann@convex.dev). Add extra logins in Token Stats with **Add account**. The default terminal login in `~/.claude` works too.
+You'll need Git and whichever of these CLIs you have, signed in: [Codex](https://github.com/openai/codex) (`codex login`), Grok Build (`grok login`), Muse Code (`muse login`) and [Claude Code](https://claude.com/claude-code).
 
 ```bash
 git clone https://github.com/mikecann/delegate.git
@@ -41,95 +43,11 @@ cd delegate
 bash install.sh
 ```
 
-This runs `bun install`, links `delegate` into `~/.local/bin`, links the skill into `~/.claude/skills` and `~/.codex/skills` (Grok reads Claude's), writes `~/.config/delegate/config.json` if you don't have one, and adds three hooks to `~/.claude/settings.json` (backing it up first). Pass `--no-hooks` to skip the hooks. Then edit the config: the Claude account emails, your employer's repos, and the hook thresholds.
+That just links `skill/` to `~/.claude/skills/delegate` and `~/.codex/skills/delegate` (Grok reads Claude's skills, so that covers all three). It's safe to run again, and you'll want to if you move the clone. `bash uninstall.sh` removes the two links.
 
-Re-run `install.sh` if you move the clone. `bash uninstall.sh` takes it all back out.
+### Upgrading from the old CLI
 
-## Using it
-
-Mostly Claude runs it for me, but you can run it yourself too:
-
-```bash
-delegate providers                       # who's ready here, and how much room each has
-delegate run --to codex --kind review "Review the uncommitted changes for bugs"
-delegate run --to claude --kind implement --brief task.md
-delegate run --to grok --kind research --brief notes.md
-delegate run --to codex --kind implement --brief - < task.md
-delegate consensus --no-repo "Redis or Postgres for sessions, given ...?"
-delegate stats                           # how the last week went
-```
-
-- `--to claude` picks the allowed Claude account with the most headroom, measured by its tightest 5-hour or weekly window. It skips this session's account, the protected `mainClaudeEmail` account, and accounts below 10%. Unknown limits are a last choice. In a Convex repo that means `claude-convex`; elsewhere, while I'm on Gmail, it's usually `claude-cannstudios`. Concrete provider ids still work, including `--to claude-gmail` when Gmail isn't this session's account.
-- Claude delegates use Opus unless you pass `--model`. Consensus uses Fable (`claude-fable-5-1`), with extra model seats as described below. Delegated Claude runs use `--strict-mcp-config`, so they don't start my global MCP servers.
-- `--kind` is `ask`, `review`, `research` or `implement`. Only `implement` (or `--write`) can change files.
-- After an implement job: `delegate diff <id>` to look, `delegate apply <id>` to bring it into your repo, `delegate clean <id>` to remove its worktree and branch. `apply` only changes anything if the patch applies cleanly. Add `--3way` to merge it anyway, which can leave conflict markers.
-- `delegate show <id>` prints the full answer. Everything else (the prompt, raw logs, status) is in `~/.delegate/runs/<id>/`.
-- `--no-repo` for questions that don't need the code, `--in-place` to skip the snapshot in a huge repo, `--timeout 30m`, `--model`, `--effort`.
-- For consensus: `--deep` adds a second round where each one answers the strongest argument against them, `--devil` gets one to argue the other side, `--all` puts every allowed provider on the panel and skips the chair.
-- `--wide` puts every allowed provider on the panel and gives the chosen Claude account both a Fable and an Opus seat. A separate fresh call chairs it, even if that account also answered. Combine it with `--deep` and `--devil`, or `--all` to skip the chair. The output lists who sat, including the Claude model seats.
-- With fewer than two labs available, as in a Convex repo, a panel with fewer than two providers expands to Fable, Opus and Sonnet on the allowed Claude account, then a separate fresh Opus call as chair. An explicit `--panel` with two or more allowed providers stays as given, even if they're all Claude accounts. `--all` skips the chair here too; `--wide` uses its two Claude seats instead. The chair gets anonymised answers in every mode.
-- `delegate hook pause 1h` turns the hook off for a bit, `delegate hook resume` turns it back on.
-- `delegate stats` is a short weekly report, so I can see if all this is actually working. I have a scheduled Claude session run it once a week. It shows how each account's weekly budget went (from `~/.delegate/limits-history.jsonl`, split at each reset), and whether my main account ran out. Then the delegate runs by provider, kind and status, with tokens and median time. And what my Claude Code sessions spent, by model, including built-in sub-agents, how often they called `delegate`, and how often the hook blocked them. It splits sessions by entrypoint, so desktop app sessions (my main account) are separate from terminal and `claude -p` ones. Folders with "convex" in the name are counted when I run it on my Mac, but skipped inside a delegated job or with `--skip-employer`, so nothing about my Convex work reaches a non-Convex account. Use `--days 14` or `--since 2026-10-01` for a different window, and `--json` for the raw numbers. It only reads transcripts changed in the window and takes a couple of seconds on mine.
-
-The skill in `skill/SKILL.md` is what tells Claude which account suits which job and how to write a brief that makes sense without the conversation.
-
-## Which account is main?
-
-I use the Claude desktop app on Gmail, but my terminal's default `~/.claude` login is Cannstudios. Those aren't the same account, which caught me out for a while.
-
-Delegate reads `CLAUDE_CODE_USER_EMAIL` from the calling session first. Without it, if `CLAUDECODE` is set, it looks up the Token Stats account for `CLAUDE_CONFIG_DIR`, or `mainClaudeConfigDir` when that variable isn't set. Outside a Claude Code session, or without a matching login, the session account is unknown. An email we can't find has unknown limits; we don't substitute the terminal's account.
-
-`mainClaudeEmail` (default `mike.cann@gmail.com`) is the account I want to protect. The `--to claude` alias and the `claude` consensus preference never choose it automatically, even from another session. I can still ask for it by name with `--to claude-gmail` when Gmail isn't the session's own account. Set `mainClaudeEmail` to `null` to turn off that protection. The hooks use the session's account for budget checks when known, otherwise the protected main account.
-
-The session's own Claude account is shown as **this session** in `delegate providers`, and can't receive a run or sit on a consensus panel, including as chair. For the terminal's default `~/.claude` login, delegate removes `CLAUDE_CONFIG_DIR` from the child's environment. Setting it, even to the same path or an empty string, changes which keychain login Claude Code uses. We don't read `~/.claude.json` to identify that login, because the desktop app overwrites its account details.
-
-Every provider child drops `CLAUDECODE`, all `CLAUDE_CODE_*` variables, `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`, so it uses its chosen subscription instead of inheriting the parent's identity, host-auth refresh or API billing. It keeps the selected `CLAUDE_CONFIG_DIR` handling and gets `DELEGATE_CHILD=1`. Hooks then stay silent, and nested `delegate run` or `delegate consensus` calls refuse, so a delegate loading my global Claude hooks doesn't hand the job off again.
-
-## Hook pace settings
-
-The hook calculates `behind = weekLeft% - budgetLeft%` for the session account's weekly window, falling back to `mainClaudeEmail` when the session account is unknown. It uses a reset timestamp when available, otherwise Token Stats' reset text, including relative times and weekday times. Relative times stay anchored to when the limits were fetched. A weekday reset within the last six hours of the snapshot counts as unknown, because the percentage may still be from before the reset.
-
-```json
-{
-  "mainClaudeEmail": "mike.cann@gmail.com",
-  "hook": {
-    "behindPaceWarnPercent": 5,
-    "behindPaceBlockPercent": 15,
-    "blockBelowWeeklyPercent": 10,
-    "blockBelowFiveHourPercent": 15
-  },
-  "chairPreference": ["claude", "codex", "grok", "muse"],
-  "panelPreference": ["codex", "grok", "muse", "claude"]
-}
-```
-
-Below 5 percentage points behind, it's on pace and reminds the session to act as the orchestrator and delegate big chunks. At 5 points behind, it asks for everything but quick edits to be delegated. At 15 points behind, or below either absolute budget floor, built-in sub-agents are blocked. If the reset can't be parsed, the old 40% weekly cutoff applies, along with the configured floors. Unknown limits only get a reminder. `local:` descriptions and `delegate hook pause` still let work through.
-
-`UserPromptSubmit` prints nothing when on pace. When behind, it adds one line of context on each prompt. All event hooks read cached files and start any stale refresh in the background. They don't wait for Token Stats. A marker in `dataDir` limits background launches to one every two minutes, including failed attempts, and a separate lock stops overlapping refreshes. An abandoned refresh lock expires after five minutes.
-
-The `claude` entry in either consensus preference list means the allowed Claude account with the most headroom, excluding this session and the protected main account. Concrete provider ids are still accepted. Normal consensus chooses one provider per lab and keeps the chair out of the panel when there are enough providers.
-
-## How it works
-
-| Piece | Detail |
-|---|---|
-| Providers | `codex exec`, `grok --prompt-file`, `muse exec` and `claude -p` with its account login, each with its own flags for headless runs. Every brief starts with a note saying it's running unattended for another agent, because otherwise they happily answer as if you're there. |
-| Read-only jobs | `git worktree add --detach` at HEAD, your uncommitted diff and untracked files copied in and committed as a baseline. Anything the delegate changes is reported and thrown away with the worktree. |
-| Write jobs | Same, on a `delegate/<id>` branch. Every CLI runs in its own OS sandbox, which blocks writes outside the worktree (temp folders are allowed, for builds). For Claude that's Claude Code's own sandbox, turned on with `--settings`. Your `node_modules` and `.venv` are linked in so builds and tests work, and the sandboxes stop anything writing through the link. |
-| Processes | Each job runs in its own process group with output going straight to files. On timeout the group gets SIGTERM, then SIGKILL. |
-| Limits | Token Stats' `limits.json`, or `token-stats limits --json`, cached in `~/.delegate/limits-cache.json`. The hooks only read files so they stay fast. |
-| Hooks | `SessionStart` adds budget and pace guidance. `UserPromptSubmit` reminds when behind pace. `PreToolUse` on `Agent`, `Task` and `Workflow` adds a reminder, or blocks when well behind. A sub-agent whose description starts with `local:` always gets through, for jobs that need the session's own tools like the browser. |
-| Consensus | Panellists answer in parallel to a fixed format. The answers are shuffled and lettered before the chair sees them, and `key.json` says who was who. |
-
-## Tests
-
-```bash
-bun install
-bun test
-bun run typecheck
-```
-
-The integration tests use fake providers and throwaway Git repos, so they don't spend any tokens.
+If you had the old CLI installed, run the old `bash uninstall.sh` before you pull, so it takes its hooks and the `delegate` command back out. If you've already pulled, remove `~/.local/bin/delegate` and the delegate hooks in `~/.claude/settings.json` by hand, then run `bash install.sh`. You can delete `~/.config/delegate` too, nothing reads it anymore.
 
 ## More tools
 
