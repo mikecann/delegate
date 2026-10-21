@@ -190,6 +190,7 @@ Pick the lowest level the job needs. Flags for each CLI are in [reference/comman
 | Write + network | Write plus outbound HTTP | Builds that install packages or call a live service |
 | Full access | No sandbox, no approvals, the whole machine | Only after Mike says yes in chat for this specific job |
 | Browser (Codex) | Codex drives Mike's real Chrome headless, with his sign-ins | Real sites, anything needing his sign-ins, anything Claude's browser tools refuse. Reading and checking needs no yes; see below |
+| Browser (Claude) | Opus drives Mike's real Chrome through the `codex-browser` tools, with his sign-ins | Same as the Codex browser, and the first choice while a Claude account has room |
 
 | CLI | Read-only | Network | Write | Full access |
 |---|---|---|---|---|
@@ -260,7 +261,7 @@ For a decision worth several opinions, send the same neutral question to Codex, 
 - The task needs this session's own tools: MCP connectors (Notion, Slack, Gmail), the desktop app, this session's browser pane for localhost previews. Do it here.
 - It's quicker to do yourself than to write the brief: a single grep, a one-line fix.
 - It's Convex work and the Convex account isn't signed in or has no room.
-- Browsing real sites isn't a reason to keep a job: Codex browses headless with `--approve-for-me` (see Access levels for when to ask). Don't use the Claude in Chrome extension, since it needs its side panel open the whole time, and don't tell Mike something can't be done in a browser until Codex has tried. The exception is account and permission changes, which need a live yes from Mike under Codex's own browser rules that a headless run can't get. Set those up for him in the Codex app or this session's browser pane and tell him what to click.
+- Browsing real sites isn't a reason to keep a job: Opus browses headless with the `codex-browser` tools, and Codex with `--approve-for-me` (see Access levels for when to ask). Don't use the Claude in Chrome extension, since it needs its side panel open the whole time, and don't tell Mike something can't be done in a browser until Codex has tried. The exception is account and permission changes, which need a live yes from Mike under Codex's own browser rules that a headless run can't get. Set those up for him in the Codex app or this session's browser pane and tell him what to click.
 
 ## If something goes wrong
 
