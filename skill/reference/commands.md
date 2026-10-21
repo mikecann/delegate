@@ -39,7 +39,7 @@ clean codex exec --skip-git-repo-check --ephemeral -C "$DIR" -s workspace-write 
 
 Add `-c sandbox_workspace_write.network_access=true` for write plus network.
 
-Browser, with approvals answered by an AI reviewer (the skill's Access levels section says when Mike needs to say yes first). Run it in an empty run folder: drop `-c approval_policy='"never"'` and add `--approve-for-me`. It opens pages in Mike's real Chrome, headless. With `approval_policy="never"` the browser is declined ("The origin approval gate did not grant access").
+Browser, with approvals answered by an AI reviewer (the skill's Access levels section says when Mike needs to say yes first). Run it in an empty run folder: drop `-c approval_policy='"never"'` and any `-s ...`, and add `--approve-for-me`. It uses the workspace-write sandbox by itself, and passing `-s` alongside it is an error ("cannot be used with '--approve-for-me'"). It opens pages in Mike's real Chrome, headless. With `approval_policy="never"` the browser is declined ("The origin approval gate did not grant access").
 
 Full access (only with Mike's yes for this job): drop `-s ...` and `-c approval_policy=...`, add `--dangerously-bypass-approvals-and-sandbox`. This can use the browser too.
 
@@ -82,6 +82,13 @@ SANDBOX='{"sandbox":{"enabled":true,"failIfUnavailable":true,"autoAllowBashIfSan
 HTTP works then, but raw DNS (`dig`) still fails inside the sandbox. For DNS lookups use the read-only network setup.
 
 Full access (only with Mike's yes for this job): replace `--permission-mode`, `--allowedTools` and `--settings` with `--dangerously-skip-permissions`.
+
+Browser: give the delegate Mike's `codex-browser` tools (his real Chrome through Codex's browser tooling, no site prompts, tabs closed at the end of each turn). `--strict-mcp-config` drops user MCP servers, so pass it in, and add its tools to whatever list the job uses:
+
+```zsh
+BROWSER_MCP="{\"mcpServers\":{\"codex-browser\":{\"command\":\"node\",\"args\":[\"$HOME/dev/me/mikerosoft-tools/codex-browser/codex-browser.mjs\"]}}}"
+... --strict-mcp-config --mcp-config "$BROWSER_MCP" --allowedTools "$READ,mcp__codex-browser__js,mcp__codex-browser__js_reset" ...
+```
 
 Accounts: the commands above use the default `~/.claude` login (mike@cannstudios.com), so `CLAUDE_CONFIG_DIR` must stay unset. For the Convex account put it after `clean`:
 
