@@ -1,32 +1,30 @@
-# Consensus by hand
+# Consensus
 
-Send one question to a panel from different labs. Each answers alone in a fixed format, you shuffle and letter the answers, and a fresh chair that didn't answer writes up the consensus, the disagreements and the best minority point. It takes a few minutes. Agreement isn't proof, since the models share training data: a test or the code beats a vote.
+Send one question to a panel from different labs. Each answers alone in a fixed format, you letter the answers in a random order, and a fresh chair that didn't answer writes up the consensus, the disagreements and the best minority point. It takes a few minutes. Agreement isn't proof, since the models share training data: a test or the code beats a vote.
 
 ## The panel
 
-- **Default:** `codex`, `grok`, `muse` and Opus (on a Claude account with room), in parallel. Chair: a fresh Fable call (`--model claude-fable-5-1`) on a Claude account with room.
-- **Big decisions (wide):** put every allowed provider on the panel and give the Claude account both a Fable and an Opus seat. Mike is happy to try as many model combinations as possible, so go wide for anything that matters. The chair is still a separate, fresh call, even if its account also answered.
-- **Convex folders:** only the Convex account is allowed, so the panel is Fable, Opus and Sonnet on it (`--model claude-fable-5-1`, `opus`, `sonnet`), and the chair is a fresh Opus call on it.
-- Skip any account with under 10% left, as usual. You need at least two answers to compare.
+Each seat is one `delegate_task` call, using the models and options from SKILL.md.
+
+- **Default:** Codex (`gpt-6.1-sol`), Grok (`grok-4.7`), Muse (`muse-wonder-full-1.0`) and Opus on a personal Claude account with room. Chair: a fresh Fable task (`claude-fable-5-1`) on a personal Claude account with room.
+- **Big decisions (wide):** every provider `orchestrator_capabilities` shows as enabled, plus extra seats: Fable as well as Opus on the Claude accounts (spread across `claudeAgent` and `claudeGmail` by room), and a second Codex model (`gpt-6-astra`) or Muse model if you think it adds something. Mike is happy to try as many model combinations as possible, so go wide for anything that matters. The chair is still a separate, fresh task, even if its account also answered.
+- **Convex folders:** only `claudeConvex` is allowed, so the panel is Fable, Opus and Sonnet on it (`claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5`), and the chair is a fresh Opus task on it.
+- Skip any account with under 10% room, as usual. Keep Muse even when its room is unknown, since a seat that fails just drops out. You need at least two answers to compare.
 
 ## Steps
 
-1. Make a run folder (`RUN=~/.delegate/runs/$(date +%Y%m%d-%H%M%S)-consensus-<slug>`) and an empty folder for questions that don't need code (`mkdir -p "$RUN/empty"`). If they need the repo, give each panellist its own snapshot (see SKILL.md), or run Codex in place read-only.
-2. Write the panel brief below to `$RUN/brief.md`, with the delegate preamble from SKILL.md on top (task note: question, or review for code). Phrase the question neutrally and don't hint at the answer you'd prefer.
-3. Run every panellist at read-only, each in its own background Bash call, writing to `$RUN/answer-<name>.md` (e.g. `answer-codex.md`, `answer-opus.md`) and `$RUN/log-<name>.txt`. Commands are in [commands.md](commands.md).
-4. When they're back, check each answer file isn't empty, then shuffle and letter them, keeping the key:
+1. Write the panel brief below, with the delegate preamble from SKILL.md on top (read-only, task note: question, or review for code). Phrase the question neutrally and don't hint at the answer you'd prefer.
+2. If the question needs the repo, paste the relevant code into the brief, or give each panellist its own worktree ([worktrees.md](worktrees.md)) and strip their `Worktree:` lines before the chair sees the answers. Otherwise run them shared.
+3. Pick one panellist at random for the devil's-advocate line below.
+4. Send every seat in the same turn: one async `delegate_task` per seat, each with its own `clientRequestId` (e.g. `<slug>-codex-r1`) and a `title` like `Panel: codex`. End your turn. Each completion wakes you.
+5. When they're all back, take each answer from its task result (`task_status` if it isn't in front of you). Drop failed or empty ones. Shuffle and letter the seats that answered, and keep the key:
 
    ```zsh
-   cd "$RUN" && ls answer-*.md | sort -R | awk '{print substr("ABCDEFGHIJ", NR, 1), $1}' > key.txt
+   printf '%s\n' codex grok muse opus | sort -R | awk '{print substr("ABCDEFGHIJ", NR, 1), $1}'
    ```
 
-5. Write the chair brief header below to `$RUN/chair-head.md`, then add the lettered answers:
-
-   ```zsh
-   cd "$RUN" && { cat chair-head.md; while read -r L F; do printf '\n## Panellist %s\n\n' "$L"; cat "$F"; done < key.txt; } > chair-brief.md
-   ```
-
-6. Run the chair on `chair-brief.md` in `$RUN/empty`, writing `chair-answer.md`. Read it, then map the letters back with `key.txt` when you report to Mike.
+6. Send the chair one `delegate_task`, shared, with the preamble (read-only, task note: question), then the chair header below, then each answer under `## Panellist <letter>` in letter order.
+7. Read the chair's answer, then map the letters back with the key when you report to Mike. Remove any worktrees the panel used.
 
 If the chair fails, weigh the lettered answers yourself: consensus, disagreements, the best minority point.
 
@@ -59,7 +57,7 @@ low, medium or high, and the one thing that would change your mind.
 
 ## Second round (for big, contested decisions)
 
-It roughly doubles the time. After round 1 and lettering, send each panellist this, writing to `$RUN/round2-<name>.md` (not `answer-*`, so the lettering step doesn't pick them up), then give the chair both rounds (add each panellist's round 2 under its round 1 as `### Panellist <letter>, round 2`):
+It roughly doubles the time. After round 1 and lettering, send each panellist a new `delegate_task` with the same provider, model and options, a new `clientRequestId` (e.g. `<slug>-codex-r2`), and the preamble plus the prompt below. Don't message its round-1 thread. Then give the chair both rounds: add each panellist's round 2 under its round 1 as `### Panellist <letter>, round 2`.
 
 ```markdown
 This is round 2 of an independent panel. Below are the question, your round-1 answer and the other panellists' answers (anonymised).
@@ -116,5 +114,3 @@ Anything factually wrong in any answer, or a blind spot they share. "None" if no
 
 # Answers
 ```
-
-The chair also gets the delegate preamble (task note: question) on top.

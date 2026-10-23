@@ -1,6 +1,6 @@
 # delegate
 
-A skill that lets your main Claude Code session hand work to your other AI subscriptions, and get a second (and third, and fourth) opinion on things
+A skill that lets your main AI session in [T3 Code](https://github.com/pingdotgg/t3code) hand work to your other AI subscriptions, and get a second (and third, and fourth) opinion on things
 
 macOS
 
@@ -8,19 +8,18 @@ macOS
 
 I kept running out of tokens on my main Claude account a day or so before the weekly reset, which is annoying when I've also got Codex, Grok, Muse and other Claude accounts sitting there with loads of room left. When I looked into where the tokens went, most of it was Claude Code's own sub-agents, and those always bill the account you're signed in with.
 
-So this skill teaches my main session to hand jobs to the other subscriptions instead, by running their CLIs headless and only reading back a short answer. Opus on another Claude account does the building and most other jobs, because it makes better choices. Codex, Grok and Muse get the menial stuff, give second opinions, and cover when the Claude accounts run low.
+So this skill teaches my main session to hand jobs to the other subscriptions instead, using T3 Code's `delegate_task` tool, and only read back a short answer. Opus on another Claude account does the building and most other jobs, because it makes better choices. Codex, Grok and Muse get the menial stuff, give second opinions, and cover when the Claude accounts run low.
 
-This used to be a CLI, with hooks and a stats command and whatnot. The trouble was it ran every job with the same locked down permissions, so Codex couldn't even resolve DNS on a research job, and its browser got every site declined. So rather than bolting more and more permission flags onto it, I've gone with letting my main session call `codex`, `claude`, `grok` and `muse` itself, with whatever permissions the job actually needs, and a skill that tells it how. The old CLI lives on in the git history.
+This used to be a CLI, with hooks and a stats command and whatnot. The trouble was it ran every job with the same locked down permissions, so Codex couldn't even resolve DNS on a research job, and its browser got every site declined. So I swapped it for a skill that had my main session call `codex`, `claude`, `grok` and `muse` itself, which worked but needed a lot of fiddly stuff around it, like stripping env vars so a child `claude` didn't run as the wrong account. Now I run everything in T3 Code, and T3 can start a child agent on any provider and model I've got set up, with each provider tied to one account, so the skill just uses that and most of the fiddly stuff is gone. The older versions live on in the git history.
 
 ## What the skill covers
 
-- Which of my accounts to use for what, and checking who has room left with [Token Stats](https://github.com/mikecann/token-stats) (`token-stats limits`). It never touches my main account, or the one the session is running on.
+- Which of my accounts to use for what, and checking who has room left with [Token Stats](https://github.com/mikecann/token-stats) (`token-stats limits`). Opus jobs go to whichever of my personal Claude accounts has the most room, and it only picks the one the session is running on when that one has loads more room, since it's already paying for the main session.
 - Keeping work code with the work account. Anything Convex only goes to my Convex Claude account, and that account never gets anything else.
-- Stripping the parent session's Claude environment variables, which otherwise make a child `claude` run as the wrong account. That one caught me out for a while.
-- Where each job runs. Read-only jobs get a throwaway copy of the repo with your uncommitted changes in it, because I found Grok and Muse would still write files when asked to stay read-only. Write jobs get their own worktree and branch, never commit, and come back as a patch you look at before applying.
-- Access levels, from read-only up to network, write and full access, with the exact flags for each CLI that I've actually tested. Full access and Codex driving my real Chrome only happen once I've said yes for that job.
+- Where each job runs. T3's child agents don't have a proper read-only mode, and I'd already found Grok and Muse would write files when asked not to, so anything that touches the repo gets its own git worktree with your uncommitted changes copied in. Write jobs never commit, and come back as a patch you look at before applying.
+- Asking first. Children run with full access, so the brief's rules are the guard, and anything destructive, or a child posting or buying something in my real Chrome, only happens once I've said yes for that job.
 - A preamble for every brief, so delegates don't answer as if I'm sitting there, or hand the job off again to yet another agent.
-- Consensus panels by hand. The same question goes to Codex, Grok, Muse and Opus without them seeing each other's answers, then a fresh Fable reads them all with the names hidden and writes up where they agree, where they don't, and the best point only one of them made. It's become my go-to for "hmm, which way should we do this" questions.
+- Consensus panels. The same question goes to Codex, Grok, Muse and Opus without them seeing each other's answers, then a fresh Fable reads them all with the names hidden and writes up where they agree, where they don't, and the best point only one of them made. It's become my go-to for "hmm, which way should we do this" questions.
 
 It's all pretty specific to my accounts and setup, so you'll want to change the account table and the Convex rule in `skill/SKILL.md` to suit yours.
 
@@ -35,7 +34,7 @@ Paste this into your AI coding agent (Claude Code, Codex, Cursor...):
 
 ### Or set it up by hand
 
-You'll need Git and whichever of these CLIs you have, signed in: [Codex](https://github.com/openai/codex) (`codex login`), Grok Build (`grok login`), Muse Code (`muse login`) and [Claude Code](https://claude.com/claude-code).
+You'll need Git and [T3 Code](https://github.com/pingdotgg/t3code), with whichever providers you have (Claude, Codex, Grok, Muse) set up and signed in there.
 
 ```bash
 git clone https://github.com/mikecann/delegate.git
