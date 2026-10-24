@@ -100,7 +100,7 @@ Children inherit this session's runtime mode, which for Mike is full access: the
 
 - Reading and checking pages needs no yes. Ask Mike before a child posts, sends, buys, deletes or changes account settings, unless he already asked for exactly that, and quote his ask in the brief. Spell out what it may do and where it must stop.
 - Opus children can drive Mike's real Chrome, with his sign-ins, through the `codex-browser` MCP tools (`mcp__codex-browser__js`). All three Claude accounts have that server, so this is the first choice while a personal Claude account has room. Say in the brief to use it.
-- Codex children have Codex's own browser and Chrome plugins. Whether those work inside a T3 child hasn't been checked, so check the first time.
+- Codex children have Codex's own browser and Chrome plugins, and they work inside a T3 child. On pages where Chrome blocks extension automation (the Chrome Web Store dashboard), its browser tool gets "Not allowed" too, but its desktop control (`cua.getApp("com.google.Chrome")`) can still drive Mike's real Chrome, so say in the brief it may fall back to that.
 - Don't use the Claude in Chrome extension, and don't tell Mike something can't be done in a browser until Codex has tried.
 
 ## Writing the brief
