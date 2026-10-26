@@ -1,19 +1,19 @@
 ---
 name: delegate
-description: Hand work to Mike's other AI subscriptions (Opus on his other Claude accounts, Codex, Grok, Muse) through T3 Code's `delegate_task` tool, instead of doing it in this session or with built-in sub-agents or Workflows, which bill the account this session runs on. Covers picking a provider, model and account by remaining usage, the Convex rule, where children run and how their changes come back, the brief template, and multi-lab consensus panels. Use whenever a job would pull a lot into this session (multi-file builds, codebase digging, long logs, reviews, research), whenever you'd reach for a sub-agent or Workflow, want a code review or second opinion, or when the user says delegate, hand off, consensus, ask the panel, or get other opinions.
+description: Hand work to Mike's other AI subscriptions (Opus on his other Claude accounts, Codex, Grok, Muse) through T3 Code's `delegate_task` tool, and run multi-lab consensus panels. Use only when Mike asks for it, e.g. he says delegate, hand off, send this to Codex (or Opus, Grok, Muse), get a second opinion or a review from another model, consensus, or ask the panel, or when a browser job needs Codex's Chrome tools. Covers picking a provider, model and account, the Convex rule, where children run and how their changes come back, and the brief template. Otherwise do the work in the current thread on its own account.
 ---
 
 # delegate
 
-Everything this session does bills the account it runs on, and so do built-in sub-agents (the Agent tool) and Workflows. Mike keeps running out on whichever account he's working in, while his other subscriptions sit idle. So act as the orchestrator: plan, decide, write briefs, check what comes back and talk to Mike here. Hand the heavy lifting to child agents on his other accounts with T3 Code's `delegate_task` tool: builds touching more than a couple of files, digging through a codebase, long logs, reviews, research.
+Mike picks the account for each T3 thread when he starts it, so a thread normally does its own work on its own account, with built-in sub-agents if that helps. Use this skill only when Mike asks for work to go elsewhere: a second opinion, a review from another lab, a consensus panel, a job he wants on a particular provider, or a browser job that needs Codex's Chrome tools.
 
-Use `delegate_task` for every handoff, even where T3's own guidance prefers native sub-agents: it bills the account you pick, applies the options you set, and shows each child as its own thread in T3, so Mike can watch it.
+When he does, use `delegate_task` rather than native sub-agents: it bills the account you pick, applies the options you set, and shows each child as its own thread in T3, so Mike can watch it.
 
 If you are yourself running as a delegate (your brief says so), do the work yourself. Don't use this skill.
 
 ## Who to send what
 
-Opus is Mike's workhorse because it makes the best choices across the board. While a personal Claude account has room, Opus does the building and almost everything else. Codex, Grok and Muse get menial jobs, second opinions, and cover when the Claude accounts run low.
+If Mike names a provider or model, use that. Otherwise Opus is the default because it makes the best choices across the board, and Codex, Grok and Muse get menial jobs, second opinions, and cover when the Claude accounts run low.
 
 | Job | First choice | Backup |
 |---|---|---|
@@ -52,16 +52,12 @@ Each T3 provider instance is one account, so the `providerInstanceId` you pick d
 
 `orchestrator_capabilities` returns `inheritedProviderInstanceId`, the account this session runs on. If the emails `token-stats limits` prints stop matching this table, check each Claude instance's `homePath` under `providerInstances` in `~/.t3/userdata/settings.json`.
 
-## Choosing who has room
+## Picking an account
 
-Run `token-stats limits` at the start of each round of delegating.
+If Mike names an account, use it. Otherwise run `token-stats limits` before sending:
 
-- An account's room is the lowest "% left" on its 5-hour and Weekly lines, plus its Weekly Fable line for Fable jobs. A window that resets within the hour doesn't count. Ignore the dollar and credit lines.
-- Skip an account with under 10% room. An account that shows an error or no percentages has unknown room: use it last.
-- Opus jobs go to whichever of `claudeAgent` and `claudeGmail` has more room. If that's this session's own account, use the other one unless this one is ahead by 20 points or more, since this session is already paying for you.
-- If neither has room, send the job to Codex.
-
-For example, `[~/.claude]` at 30% weekly and `[claude-1]` at 90% 5-hour means `claudeGmail`.
+- An account's room is the lowest "% left" on its 5-hour and Weekly lines, plus its Weekly Fable line for Fable jobs. A window that resets within the hour doesn't count. Ignore the dollar and credit lines. Skip an account with under 10% room, and use one that shows an error or no percentages last.
+- Opus jobs go to whichever of `claudeAgent` and `claudeGmail` has more room. If neither has room, send the job to Codex.
 
 ## The Convex rule
 
@@ -99,7 +95,7 @@ Children inherit this session's runtime mode, which for Mike is full access: the
 ## Browser
 
 - Reading and checking pages needs no yes. Ask Mike before a child posts, sends, buys, deletes or changes account settings, unless he already asked for exactly that, and quote his ask in the brief. Spell out what it may do and where it must stop.
-- Opus children can drive Mike's real Chrome, with his sign-ins, through the `codex-browser` MCP tools (`mcp__codex-browser__js`). All three Claude accounts have that server, so this is the first choice while a personal Claude account has room. Say in the brief to use it.
+- A Claude thread can drive Mike's real Chrome, with his sign-ins, through the `codex-browser` MCP tools (`mcp__codex-browser__js`), so it only needs a child for browser work that those tools can't do. All three Claude accounts have that server, so Opus children can use it too: say so in the brief.
 - Codex children have Codex's own browser and Chrome plugins, and they work inside a T3 child. On pages where Chrome blocks extension automation (the Chrome Web Store dashboard), its browser tool gets "Not allowed" too, but its desktop control (`cua.getApp("com.google.Chrome")`) can still drive Mike's real Chrome, so say in the brief it may fall back to that.
 - Don't use the Claude in Chrome extension, and don't tell Mike something can't be done in a browser until Codex has tried.
 
@@ -112,7 +108,7 @@ The child gets only the `task` text, none of this conversation. Write it as if f
 - What you already know or ruled out, so it doesn't redo your work.
 - What good output looks like: the format, how long, what to leave out.
 
-Start every brief with this block, filled in. Children load Mike's global instructions, which tell every session to delegate and to end with a "What I need from you" section, and they can see this skill. Without the block they answer as if Mike were there, and may delegate again.
+Start every brief with this block, filled in. Children load Mike's global instructions, which tell every session to end with a "What I need from you" section, and they can see this skill. Without the block they answer as if Mike were there, and may delegate again.
 
 ```markdown
 You are running unattended as a delegate for another AI agent (the orchestrator). No person is reading this live.
@@ -178,13 +174,6 @@ A child's answer is a report, not proof. Before telling Mike something is done o
 ## Consensus
 
 For a decision worth several opinions, send the same neutral question to Codex, Grok, Muse and Opus in parallel, hide who said what, and have a fresh Fable chair write up the consensus, the disagreements and the best minority point. Mike is happy to try as many model combinations as possible, so go wide for anything that matters. The recipe, briefs and chair prompt are in [reference/consensus.md](reference/consensus.md).
-
-## When not to delegate
-
-- The task needs this session's own tools: its connectors (Notion, Slack, Gmail), the desktop app, or its preview pane for localhost. Do it here.
-- It's quicker to do yourself than to write the brief: a single grep, a one-line fix.
-- It's Convex work and the Convex account isn't signed in or has no room.
-- Browsing real sites isn't a reason to keep a job (see Browser).
 
 ## If something goes wrong
 

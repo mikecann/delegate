@@ -6,6 +6,7 @@ It used to be a Bun CLI with hooks, and then a skill that called the `codex`, `c
 
 ## Rules
 
+- The skill is opt-in. Mike picks the account when he starts a T3 thread, so a thread does its own work there and only delegates when he asks. Don't bring back proactive delegation (the orchestrator pattern) without him asking.
 - Git snippets in the skill (starting state, worktrees, diff, apply, cleanup, the Convex check) get tested in a throwaway git repo under `$TMPDIR` before they go in, including uncommitted, untracked and binary changes. Point `HOME` at a temp folder so nothing lands in the real `~/.delegate` or `~/.t3`.
 - Claims about how T3 behaves (`delegate_task`, isolation, runtime modes, provider IDs, model options) must have been checked live by an orchestrator session in T3 before they go in, with the date noted in the skill. A child can't call `delegate_task`, so anything only read from T3's docs or source gets marked "check the first time".
 - Never let a child work in Mike's real tree for a read-only job that needs the code. It gets a worktree.

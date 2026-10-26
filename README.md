@@ -12,9 +12,11 @@ So this skill teaches my main session to hand jobs to the other subscriptions in
 
 This used to be a CLI, with hooks and a stats command and whatnot. The trouble was it ran every job with the same locked down permissions, so Codex couldn't even resolve DNS on a research job, and its browser got every site declined. So I swapped it for a skill that had my main session call `codex`, `claude`, `grok` and `muse` itself, which worked but needed a lot of fiddly stuff around it, like stripping env vars so a child `claude` didn't run as the wrong account. Now I run everything in T3 Code, and T3 can start a child agent on any provider and model I've got set up, with each provider tied to one account, so the skill just uses that and most of the fiddly stuff is gone. The older versions live on in the git history.
 
+I've since dialled it back a bit tho. In T3 I pick which account a thread runs on when I start it, so I'd rather that thread just carried on using that account. So the skill only kicks in now when I ask for it, like when I want a second opinion from another lab or to ask the consensus panel something.
+
 ## What the skill covers
 
-- Which of my accounts to use for what, and checking who has room left with [Token Stats](https://github.com/mikecann/token-stats) (`token-stats limits`). Opus jobs go to whichever of my personal Claude accounts has the most room, and it only picks the one the session is running on when that one has loads more room, since it's already paying for the main session.
+- Which of my accounts to use for what, and checking who has room left with [Token Stats](https://github.com/mikecann/token-stats) (`token-stats limits`). Unless I name an account, Opus jobs go to whichever of my personal Claude accounts has the most room.
 - Keeping work code with the work account. Anything Convex only goes to my Convex Claude account, and that account never gets anything else.
 - Where each job runs. T3's child agents don't have a proper read-only mode, and I'd already found Grok and Muse would write files when asked not to, so anything that touches the repo gets its own git worktree with your uncommitted changes copied in. Write jobs never commit, and come back as a patch you look at before applying.
 - Asking first. Children run with full access, so the brief's rules are the guard, and anything destructive, or a child posting or buying something in my real Chrome, only happens once I've said yes for that job.
