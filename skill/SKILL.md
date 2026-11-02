@@ -1,13 +1,11 @@
 ---
 name: delegate
-description: Hand work to Mike's other AI subscriptions (Opus on his other Claude accounts, Codex, Grok, Muse) through T3 Code's `delegate_task` tool, and run multi-lab consensus panels. Use only when Mike asks for it, e.g. he says delegate, hand off, send this to Codex (or Opus, Grok, Muse), get a second opinion or a review from another model, consensus, or ask the panel, or when a browser job needs Codex's Chrome tools. Covers picking a provider, model and account, the Convex rule, where children run and how their changes come back, and the brief template. Otherwise do the work in the current thread on its own account.
+description: Hand work to Mike's other AI subscriptions (Opus on his other Claude accounts, Codex, Grok, Muse) from a Threadbear thread, through the claude, codex, grok and muse CLIs or Threadbear's `create_thread`, and run multi-lab consensus panels. Use only when Mike asks for it, e.g. he says delegate, hand off, send this to Codex (or Opus, Grok, Muse), get a second opinion or a review from another model, consensus, or ask the panel. Covers picking a provider, model, account and route, the Convex rule, where children run and how their changes come back, and the brief template. Otherwise do the work in the current thread on its own account.
 ---
 
 # delegate
 
-Mike picks the account for each T3 thread when he starts it, so a thread normally does its own work on its own account, with built-in sub-agents if that helps. Use this skill only when Mike asks for work to go elsewhere: a second opinion, a review from another lab, a consensus panel, a job he wants on a particular provider, or a browser job that needs Codex's Chrome tools.
-
-When he does, use `delegate_task` rather than native sub-agents: it bills the account you pick, applies the options you set, and shows each child as its own thread in T3, so Mike can watch it.
+Mike picks the account for each Threadbear thread when he starts it, so a thread normally does its own work on its own account, with built-in sub-agents if that helps. Use this skill only when Mike asks for work to go elsewhere: a second opinion, a review from another lab, a consensus panel, or a job he wants on a particular provider. Native sub-agents don't count: they always bill this thread's account.
 
 If you are yourself running as a delegate (your brief says so), do the work yourself. Don't use this skill.
 
@@ -25,49 +23,48 @@ If Mike names a provider or model, use that. Otherwise Opus is the default becau
 | Menial, mechanical jobs: bulk renames, reformatting, dependency bumps, quick lookups | Codex | Grok |
 | A decision worth several opinions | a consensus panel ([reference/consensus.md](reference/consensus.md)) | |
 
-Default `target.model` and `target.options`. Always pass the options: they only inherit when the child keeps this session's provider and model.
+Default models and efforts. Always pass the effort.
 
-| For | Model | Options |
-|---|---|---|
-| Opus | `claude-opus-5-5` | `{"effort": "xhigh"}`, or `"max"` for hard problems |
-| Codex | `gpt-6.1-sol` | `{"reasoningEffort": "high"}` (T3's default is `low`), `"low"` for menial jobs |
-| Grok | `grok-4.7` | `{"reasoningEffort": "high"}` |
-| Muse | `muse-wonder-full-1.0` | `{"reasoningEffort": "high"}` |
-| Consensus chair | `claude-fable-5-1` | `{"effort": "high"}` |
+| For | CLI model | `create_thread` model | Effort |
+|---|---|---|---|
+| Opus | `claude-opus-5-5` | `opus` | `xhigh`, or `max` for hard problems |
+| Codex | `gpt-6.1-sol` | `gpt-6.1-sol` | `high`, or `low` for menial jobs |
+| Grok | `grok-4.7` | not available | `high` |
+| Muse | `muse-wonder-full-1.0` | not available | `high` |
+| Consensus chair | `claude-fable-5-1` | `fable` | `high` |
 
-Only drop to `claude-sonnet-5-5` for genuinely menial Claude jobs. These IDs were current on 23 Oct 2026. Call `orchestrator_capabilities` once per session for the live providers, models and options, and go by that if this table has gone stale. Any other provider it shows as enabled can take jobs too.
+Only drop to `claude-sonnet-5-5` (`sonnet`) for genuinely menial Claude jobs. **Muse access ends on 13 Nov 2026** (Mike cancelled): after that, skip it everywhere in this skill. These IDs were current on 2 Nov 2026. If one has gone stale, `list_accounts` shows Claude and Codex models, and `grok models` shows Grok's.
 
 ## Accounts
 
-Each T3 provider instance is one account, so the `providerInstanceId` you pick decides who pays.
+| Threadbear account | Login | `CLAUDE_CONFIG_DIR` for the CLI | In `token-stats limits` | Use |
+|---|---|---|---|---|
+| `claude-main` | Claude mike@cannstudios.com (Max) | leave unset (`main` in seats.zsh) | `[~/.claude]` | personal work |
+| `claude-1` | Claude mike.cann@gmail.com (Max) | `~/Library/Application Support/Token Stats/Accounts/claude-1` | `[claude-1]` | personal work |
+| `claude-3` | Claude mike@gangbusters.io (Max) | `.../Accounts/claude-3` | `[claude-3]` | personal work |
+| `claude-2` | Claude mike.cann@convex.dev (Team) | `.../Accounts/claude-2` | `[claude-2]` | Convex work only |
+| `codex-main` | ChatGPT | not needed | `[~/.codex]` | |
+| none, CLI only | X Premium+ | not needed | `[~/.grok]` | |
+| none, CLI only | Muse Power Usage, until 13 Nov 2026 | not needed | `[~/.config/muse]` | |
 
-| providerInstanceId | Account | In `token-stats limits` | Use |
-|---|---|---|---|
-| `claudeAgent` | Claude mike@cannstudios.com (Max) | `[~/.claude]` | personal work, the Opus workhorse |
-| `claudeGmail` | Claude mike.cann@gmail.com (Max) | `[claude-1]` | personal work, the Opus workhorse |
-| `claudeConvex` | Claude mike.cann@convex.dev (Team) | `[claude-2]` | Convex work only |
-| `codex` | ChatGPT Pro | `[~/.codex]` | |
-| `grok` | X Premium+ | `[~/.grok]` | |
-| `muse` | Muse Power Usage | `[~/.config/muse]` | |
-
-`orchestrator_capabilities` returns `inheritedProviderInstanceId`, the account this session runs on. If the emails `token-stats limits` prints stop matching this table, check each Claude instance's `homePath` under `providerInstances` in `~/.t3/userdata/settings.json`.
+A plain `claude` in a thread runs on that thread's account, because it inherits `CLAUDE_CONFIG_DIR`. [seats.zsh](reference/seats.zsh) strips that, so go through it.
 
 ## Picking an account
 
 If Mike names an account, use it. Otherwise run `token-stats limits` before sending:
 
-- An account's room is the lowest "% left" on its 5-hour and Weekly lines, plus its Weekly Fable line for Fable jobs. A window that resets within the hour doesn't count. Ignore the dollar and credit lines. Skip an account with under 10% room, and use one that shows an error or no percentages last.
-- Opus jobs go to whichever of `claudeAgent` and `claudeGmail` has more room. If neither has room, send the job to Codex.
+- An account's room is the lowest "% left" on its 5-hour and Weekly lines, plus its Weekly Fable line for Fable jobs. Max accounts no longer have a 5-hour line. A window that resets within the hour doesn't count. Ignore the dollar and credit lines. Skip an account with under 10% room, and use one that shows an error or no percentages last.
+- Opus jobs go to whichever of `claude-main`, `claude-1` and `claude-3` has most room. If none has room, send the job to Codex.
 
 ## The Convex rule
 
-Convex work only ever goes to `claudeConvex`, and that account never gets anything else, including consensus seats on questions that aren't Convex work. Convex work is:
+Convex work only ever goes to `claude-2`, and that account never gets anything else, including consensus seats on questions that aren't Convex work. Convex work is:
 
 - a repo with a remote matching `github\.com(?::\d+)?[:/](?:get-)?convex/` (case-insensitive), or
 - anything under `~/dev/convex/`, or
 - `~/dev/me/port-geo-christmas-lights-cruise`.
 
-Check from the folder the work is in (it also catches worktrees of those repos, T3's included):
+Check from the folder the work is in (it also catches worktrees of those repos):
 
 ```zsh
 { git remote -v 2>/dev/null | grep -qiE 'github\.com(:[0-9]+)?[:/](get-)?convex/'; } || { printf '%s\n' "$(pwd -P)" "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" | grep -qE "^$HOME/dev/(convex|me/port-geo-christmas-lights-cruise)(/|$)"; } && echo CONVEX || echo not-convex
@@ -75,19 +72,44 @@ Check from the folder the work is in (it also catches worktrees of those repos, 
 
 Don't get round it by pasting Convex code or details into a brief for another provider. If the Convex account isn't signed in or has no room, do the job here or wait.
 
+**When Mike explicitly asks for other labs on Convex work,** his ask wins for that job, as it did on 2 Nov 2026 when he asked Fable, Astra, Muse and Grok to review a video script that was going on YouTube anyway:
+
+- He has to have said it for this job: "get Grok and Codex on this" counts, "get a second opinion" doesn't (that stays on `claude-2`).
+- Go ahead if the material is public or about to be. Send other labs only what the job needs, and generalise anything non-public (general channel numbers rather than the private dashboard).
+- Private code, customer details, credentials or unreleased plans still don't leave `claude-2` unless he named that material. If you can't tell whether his ask covers it, ask him.
+- Claude seats stay on `claude-2`. His ask opens the door to the labs he named, not to his personal Claude accounts.
+- Tell him what went to whom when you report back.
+
+## CLI or a Threadbear thread
+
+| | CLI ([reference/cli.md](reference/cli.md)) | `create_thread` or `tb new` |
+|---|---|---|
+| Providers | Claude, Codex, Grok, Muse | Claude and Codex only |
+| Read-only | yes, locked by flags | no: `full`, or `ask`, which stops for a person at each action |
+| Mike sees it | no, only your report | yes, as a thread he can watch and talk to |
+| Comes back as | a file, and wakes you | nothing by itself, see below |
+
+Use the CLI by default: any read-only job, any panel, and anything for Grok or Muse. Use a thread when Mike wants to watch or take over the job, or it's a long piece of writing work he'd want to steer.
+
+For a thread:
+
+- Set `account` to pin it to one login, or `pool` to let Threadbear pick the login with room and move it when one runs dry. Pool `claude` is the personal accounts and `codex` is Codex.
+- Convex work always sets `account: "claude-2"`. The folder only picks the Convex pool under `~/dev/convex`, so a Convex repo somewhere else would land on a personal account.
+- Pass `model`, `effort`, `folder`, `title` and `why`. The first message needs the whole brief, preamble included.
+- It doesn't report back. To get the answer, run `tb new "<brief>" --cwd <folder> --account <id> --model <model> --effort <effort> --why "<why>" --wait` in a background Bash, which prints the transcript when the thread finishes. Otherwise check on it later with `read_thread`. To follow up, use `send_message`.
+- It has full access, so a write job gets a worktree as its `folder`. If the repo opts in to Threadbear's thread worktrees, the thread gets its own from `main` instead, without Mike's uncommitted changes, so check where it landed.
+
 ## Where children run
 
-`isolation: "shared"` (the default) runs the child in this thread's checkout. `isolation: "worktree"` runs it in a new git worktree. Children can't be made read-only, so keep them out of Mike's real tree wherever you can:
+Keep them out of Mike's real tree wherever you can:
 
-- **Questions that don't need the code:** shared, with a brief that says not to create or change files. If a job only needs a little code, paste it into the brief and treat it as a question.
-- **Anything that reads or changes the repo:** a worktree with Mike's uncommitted changes in it. Follow [reference/worktrees.md](reference/worktrees.md): record the starting state, make the worktree (`isolation: "worktree"` if this session's working directory is in that repo, otherwise one you make yourself), and remove it afterwards. Write jobs never commit: you diff the worktree, check the patch, apply it to the real tree and run the tests. These worktrees are the job's scratch space, not the kind Mike's instructions say to ask about.
-- **A folder that isn't a git repo:** shared only. A write job there edits the real files, so keep it small or do it yourself.
+- **Questions that don't need the code:** an empty scratch folder. If a job only needs a little code, paste it into the brief and treat it as a question.
+- **Anything that reads or changes the repo:** a worktree with Mike's uncommitted changes in it. Follow [reference/worktrees.md](reference/worktrees.md): record the starting state, make the worktree, and remove it afterwards. Write jobs never commit: you diff the worktree, check the patch, apply it to the real tree and run the tests. These worktrees are the job's scratch space, not the kind Mike's instructions say to ask about.
+- **A folder that isn't a git repo:** copy what the job needs to a scratch folder. A write job in the real folder edits the real files, so keep it small or do it yourself.
 
 ## Access and risk
 
-Children inherit this session's runtime mode, which for Mike is full access: they can read the whole disk (keys, other projects), use the network and run anything. Nothing enforces read-only, so the brief's rules are the guard.
-
-- Leave `runtimeMode` unset. Narrower modes don't make a child read-only: they make it stop and wait for a person to approve each action in its own thread, and you can't approve from here.
+- The CLI locks stop writes and shell, but every child can still read the whole disk (keys, other projects). Threads, and CLI write jobs, can do more: threads have full access, and write jobs can run anything their sandbox allows. For those, the brief's rules are the guard.
 - Anything destructive, or outside the child's working directory, needs Mike's yes in chat for that specific job. Quote it in the brief (e.g. `Mike approved this in chat: "yes go for it"`). Approval for one job doesn't carry to the next.
 - Jobs that touch secrets go to Opus, never Grok. Codex's shell also hides environment variables whose names contain `KEY`, `SECRET` or `TOKEN`, so a job that needs one in its environment goes to Opus too.
 - For an API key, look in Mike's existing Convex deployments first (`npx convex env get --prod NAME`, copied across without printing it). Otherwise have Mike paste it himself.
@@ -95,13 +117,13 @@ Children inherit this session's runtime mode, which for Mike is full access: the
 ## Browser
 
 - Reading and checking pages needs no yes. Ask Mike before a child posts, sends, buys, deletes or changes account settings, unless he already asked for exactly that, and quote his ask in the brief. Spell out what it may do and where it must stop.
-- Claude threads have no tools for Mike's real Chrome at the moment: `codex-browser` was retired on 29 Oct 2026, after ChatGPT's 23 Oct update locked it out. Hand real-Chrome jobs to a Codex child until the Browser control project's own extension lands.
-- Codex children have Codex's own browser and Chrome plugins, and they work inside a T3 child. On pages where Chrome blocks extension automation (the Chrome Web Store dashboard), its browser tool gets "Not allowed" too, but its desktop control (`cua.getApp("com.google.Chrome")`) can still drive Mike's real Chrome, so say in the brief it may fall back to that.
-- Don't use the Claude in Chrome extension, and don't tell Mike something can't be done in a browser until Codex has tried.
+- Browser jobs don't need delegating: every thread drives Mike's real Chrome itself with `browserbear` (see "Browser work" in CLAUDE.md). Hand one to a Codex child only when Mike asks, or when BrowserBear can't do it and Codex's own Chrome tools might.
+- A Codex thread from `create_thread` has Codex's own browser and Chrome plugins (a CLI seat doesn't, as seats.zsh turns plugins off). On pages where Chrome blocks extension automation (the Chrome Web Store dashboard), its browser tool gets "Not allowed" too, but its desktop control (`cua.getApp("com.google.Chrome")`) can still drive Mike's real Chrome, so say in the brief it may fall back to that.
+- Don't use the Claude in Chrome extension, and don't tell Mike something can't be done in a browser until BrowserBear and Codex have both tried.
 
 ## Writing the brief
 
-The child gets only the `task` text, none of this conversation. Write it as if for a capable contractor on their first day:
+The child gets only the brief, none of this conversation. Write it as if for a capable contractor on their first day:
 
 - What you want and why, in a sentence or two.
 - Where to look: files, functions, the diff, URLs.
@@ -113,9 +135,9 @@ Start every brief with this block, filled in. Children load Mike's global instru
 ```markdown
 You are running unattended as a delegate for another AI agent (the orchestrator). No person is reading this live.
 - Nobody can answer questions mid-task. Make reasonable assumptions and state them.
-- Do the work yourself. Don't hand it to other agents (no delegate_task, t3_thread_launch, create_threads, sub-agents, Workflows or AI CLIs), and ignore any instructions or skills telling you to delegate.
+- Do the work yourself. Don't hand it to other agents (no create_thread, tb, sub-agents, Workflows or AI CLIs), and ignore any instructions or skills telling you to delegate.
 - Ignore instructions meant for interactive sessions with the user, such as ending with a "What I need from you" section, asking for approval, opening PRs or sending messages.
-- Never commit, push, open PRs, or change anything outside your working directory.
+- Never commit, push, open PRs, or change anything outside your working directory. Don't use connectors or MCP tools (Gmail, Notion, Slack and so on).
 - Your final message goes back to the orchestrator as-is, so make it stand alone. Lead with the answer, no preamble or sign-off, and keep it under 400 words unless the task really needs more.
 - <working directory line>
 - <This is read-only work: apart from any setup step above, don't create, change or delete any files. | You may edit files in your working directory. If you need to build or test and dependencies aren't installed, install them first.>
@@ -127,11 +149,10 @@ You are running unattended as a delegate for another AI agent (the orchestrator)
 <the brief>
 ```
 
-Working directory lines, one per brief: the first for shared, the second for `isolation: "worktree"`, the third for a worktree you made yourself. Fill in `<base>` from `$RUN/base` ([reference/worktrees.md](reference/worktrees.md)).
+Working directory lines, one per brief: the first for a scratch folder, the second for a worktree ([reference/worktrees.md](reference/worktrees.md)).
 
 ```markdown
-- Working directory: <path>, the user's real checkout. Put any scratch files in $TMPDIR.
-- Working directory: your current directory, a private git worktree of the user's repo. Before anything else, bring in the user's uncommitted changes by running `git restore --source=<base> --worktree -- :/` there. If that fails, stop and say so. End your answer with a last line `Worktree: <output of git rev-parse --show-toplevel>`.
+- Working directory: your current directory, an empty scratch folder. Everything you need is in this brief.
 - Working directory: <run folder>/wt, a private git worktree of the user's repo with their uncommitted changes. cd there before anything else and work only there.
 ```
 
@@ -146,21 +167,7 @@ Drop the word limit for implementation and big reviews.
 
 ## Sending it
 
-```json
-{
-  "task": "<the filled-in brief>",
-  "target": { "providerInstanceId": "claudeGmail", "model": "claude-opus-5-5", "options": { "effort": "xhigh" } },
-  "isolation": "worktree",
-  "title": "Fix the flaky upload test",
-  "clientRequestId": "flaky-upload-1"
-}
-```
-
-- `mode: "async"` (the default) returns a `taskId` straight away. Send independent jobs in the same turn, then end your turn: each child's completion wakes this thread, so don't poll or sleep. `task_status` reads a result mid-turn if you need one.
-- `mode: "wait"` blocks until the child finishes, 10 minutes by default (`timeoutMs`). Use it only for a short job your next step depends on. Timing out doesn't stop the child.
-- Give every call its own `clientRequestId`, and reuse it only to retry that same call. A follow-up for the same child, like a second round, is a new `delegate_task` with the full context in its brief, never a message to the old child's thread.
-- Check that the returned `providerInstanceId`, `model` and `options` match what you asked for.
-- Give each child a short `title`, since that's what Mike sees in T3.
+Follow [reference/cli.md](reference/cli.md), or "CLI or a Threadbear thread" above for a thread. Send independent jobs together. Treat the seat's `FAILED` line as the result, and don't report on a job you didn't get an answer from.
 
 ## Checking the result
 
@@ -173,12 +180,11 @@ A child's answer is a report, not proof. Before telling Mike something is done o
 
 ## Consensus
 
-For a decision worth several opinions, send the same neutral question to Codex, Grok, Muse and Opus in parallel, hide who said what, and have a fresh Fable chair write up the consensus, the disagreements and the best minority point. Mike is happy to try as many model combinations as possible, so go wide for anything that matters. The recipe, briefs and chair prompt are in [reference/consensus.md](reference/consensus.md).
+For a decision worth several opinions, send the same neutral question to Codex, Grok, Muse (until 13 Nov 2026) and Opus in parallel, hide who said what, and have a fresh Fable chair write up the consensus, the disagreements and the best minority point. Mike is happy to try as many model combinations as possible, so go wide for anything that matters. The recipe, briefs and chair prompt are in [reference/consensus.md](reference/consensus.md).
 
 ## If something goes wrong
 
-- A failed task: its `task_status` summary includes the provider's error.
-- `hasPendingQuestion`: answer it with `t3_pending_request_list`, `t3_pending_request_read` and `t3_pending_request_respond` (`threadId` is the task's `childThreadId`), or ask Mike. `pendingApproval`: you can't grant it. Tell Mike which child is waiting (link it as `[title](t3-thread://v1/<childThreadId>)`), or cancel it and send it again.
-- A provider that needs signing in again: only Mike can do that, so tell him which one and use another account meanwhile. He can sign in again in T3 or with the CLI: `claude auth login` for `claudeAgent`, `CLAUDE_CONFIG_DIR="<its homePath>" claude auth login` for `claudeGmail` or `claudeConvex`, and `codex login`, `grok login` or `muse login`. Never write to credential files or the keychain yourself.
-- `isolation: "worktree"` refused ("Unable to resolve the parent checkout commit", or "does not contain the parent checkout's commit"): this thread's checkout isn't that repo, so make the worktree yourself.
-- A job overrunning: stop it with `task_cancel`, then split the task.
+- A failed CLI job: `seats_wait` names it, and [reference/cli.md](reference/cli.md) has the usual causes. A panel carries on without a seat that failed.
+- A thread that stops for approval: tell Mike which one and link it as `[title](thread:<id>)`. You can answer it with `tb approve` only if he said yes to that action.
+- A provider that needs signing in again: only Mike can do that, so tell him which one and use another account meanwhile. He can do it with `claude auth login` for `claude-main`, `CLAUDE_CONFIG_DIR="<its folder>" claude auth login` for the others, and `codex login`, `grok login` or `muse login`. Never write to credential files or the keychain yourself.
+- A job overrunning: lower `LIMIT` and split the task, or `tb interrupt` a thread.
