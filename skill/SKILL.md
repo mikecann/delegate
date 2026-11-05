@@ -70,7 +70,7 @@ Don't get round it by pasting Convex code or details into a brief for another pr
 
 ## Access and risk
 
-- The CLI locks stop writes and shell, but every job can still read the whole disk (keys, other projects). For threads and write jobs, which can do more, the brief's rules are the guard.
+- The CLI locks stop writes, and shell on every CLI except Codex, which runs commands in a sandbox that blocks writes. Every job can still read the whole disk (keys, other projects). For threads and write jobs, which can do more, the brief's rules are the guard.
 - Anything destructive, or outside the job's working directory, needs Mike's yes in chat for that specific job. Quote it in the brief (e.g. `Mike approved this in chat: "yes go for it"`). The same goes for a job posting, sending or buying anything.
 - Jobs that touch secrets stay in this thread or go to Opus, never Grok.
 - Browser work doesn't need this skill: see "Browser work" in CLAUDE.md. Where Chrome blocks extensions (the Chrome Web Store dashboard), a Codex thread's desktop control (`cua.getApp("com.google.Chrome")`) can still drive it, so say so in that brief.
@@ -94,7 +94,7 @@ You are running unattended as a delegate for another AI agent (the orchestrator)
 - Never commit, push, open PRs, or change anything outside your working directory. Don't use connectors or MCP tools (Gmail, Notion, Slack and so on).
 - Your final message goes back to the orchestrator as-is, so make it stand alone. Lead with the answer, no preamble or sign-off, and keep it under 400 words unless the task really needs more.
 - <working directory line>
-- <This is read-only work: apart from any setup step above, don't create, change or delete any files. | You may edit files in your working directory. If you need to build or test and dependencies aren't installed, install them first.>
+- <This is read-only work: apart from any setup step above, don't create, change or delete any files, and don't build, run test suites or start anything long-running: read the code instead, as this machine is someone's laptop. | You may edit files in your working directory. If you need to build or test and dependencies aren't installed, install them first.>
 
 <one task note from below>
 
@@ -115,7 +115,7 @@ Task notes, one per brief:
 - **Question:** Task type: question. Answer directly, from your own judgement, and use tools only to check facts you're unsure of.
 - **Review:** Task type: review. Read the relevant code and report concrete problems, most severe first. For each: file:line, what's wrong, and a concrete input or situation that triggers it. Don't edit files. If you find nothing significant, say so plainly rather than padding the list.
 - **Research:** Task type: research. Cite a source (URL or file path) for each factual claim, and say which things you verified and which you're inferring.
-- **Implementation:** Task type: implementation. Make the change by editing files in your working directory. Don't commit. Run the relevant tests or build if you can. End with: files changed, how you verified it, and anything left undone.
+- **Implementation:** Task type: implementation. Make the change by editing files in your working directory. Don't commit. Run the tests for what you changed, or build, if you can, but not a full test or e2e suite. End with: files changed, how you verified it, and anything left undone.
 
 Drop the word limit for implementation and big reviews.
 

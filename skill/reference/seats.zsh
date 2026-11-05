@@ -11,6 +11,11 @@
 #   RESEARCH  set to 1 to add web tools to the Claude and Grok locks
 #   WRITE     set to 1 to drop the locks, in a worktree or scratch folder only
 #   LIMIT     seconds before a seat is killed, default 900
+#
+# Every seat runs under taskpolicy -b (macOS background priority, throttled CPU and disk),
+# and whatever it spawns inherits that. A Codex reviewer ran xcodebuild in its worktree on
+# 5 Nov 2026 and loaded Mike's M5 for ten minutes at full priority. Logins still work under
+# it: Codex's ChatGPT login and Claude's keychain login were both tested that day.
 
 # A thread's environment carries its own login and session (CLAUDE_CONFIG_DIR,
 # CLAUDE_EFFORT and more), so a child claude would bill the thread's account without this.
@@ -30,7 +35,7 @@ claude_seat() {
     lock=(--tools "Read,Glob,Grep${RESEARCH:+,WebSearch,WebFetch}")
   fi
   (
-    cd "$DIR" && _seat_clean $cfg timeout ${LIMIT:-900} claude -p --model "$model" --effort "$effort" \
+    cd "$DIR" && _seat_clean $cfg taskpolicy -b timeout ${LIMIT:-900} claude -p --model "$model" --effort "$effort" \
       $lock --strict-mcp-config --no-session-persistence \
       < "$RUN/brief-$name.md" > "$RUN/out-$name.md" 2> "$RUN/err-$name.log"
     echo "$name exit $?" >> "$RUN/status"
@@ -38,14 +43,19 @@ claude_seat() {
 }
 
 # codex_seat <name> <model> <effort>
-# -s read-only stops writes and shell but not connectors, and -c 'mcp_servers={}' doesn't
-# remove them. --ignore-user-config drops config.toml's servers (the login still works),
-# and the two --disable flags drop the app and plugin ones.
+# -s read-only stops writes but not shell: Codex reads files by running commands, so
+# commands still run inside a sandbox that blocks writes and some binaries (ps), and a
+# reviewer can still start a build (xcodebuild, 5 Nov 2026). --disable shell_tool
+# --disable unified_exec does stop shell, but then it can't read files either (tested
+# 5 Nov), so the brief tells reviewers not to build, and taskpolicy -b keeps it light.
+# Read-only doesn't stop connectors either, and -c 'mcp_servers={}' doesn't remove them.
+# --ignore-user-config drops config.toml's servers (the login still works), and the two
+# --disable flags drop the app and plugin ones.
 codex_seat() {
   local name=$1 model=$2 effort=$3 sandbox=read-only
   [[ -n $WRITE ]] && sandbox=workspace-write
   (
-    timeout ${LIMIT:-900} codex exec --ignore-user-config --disable apps --disable plugins \
+    taskpolicy -b timeout ${LIMIT:-900} codex exec --ignore-user-config --disable apps --disable plugins \
       -m "$model" -c "model_reasoning_effort=\"$effort\"" -s $sandbox --skip-git-repo-check \
       -C "$DIR" -o "$RUN/out-$name.md" - < "$RUN/brief-$name.md" > "$RUN/err-$name.log" 2>&1
     echo "$name exit $?" >> "$RUN/status"
@@ -63,7 +73,7 @@ grok_seat() {
     lock=(--tools "read_file,grep,list_dir${RESEARCH:+,web_search,web_fetch}" --disallowed-tools use_tool,search_tool)
   fi
   (
-    timeout ${LIMIT:-900} grok --prompt-file "$RUN/brief-$name.md" -m "$model" --effort "$effort" $lock \
+    taskpolicy -b timeout ${LIMIT:-900} grok --prompt-file "$RUN/brief-$name.md" -m "$model" --effort "$effort" $lock \
       --cwd "$DIR" > "$RUN/out-$name.md" 2> "$RUN/err-$name.log" < /dev/null
     local code=$?
     grep -q 'name no tool' "$RUN/err-$name.log" && code=UNLOCKED
@@ -79,7 +89,7 @@ muse_seat() {
   local name=$1 model=$2 effort=$3 lock=(--disable-write --disable-shell)
   [[ -n $WRITE ]] && lock=()
   (
-    cd "$DIR" && timeout ${LIMIT:-600} muse exec --model "$model" --effort "$effort" $lock --approval-mode never \
+    cd "$DIR" && taskpolicy -b timeout ${LIMIT:-600} muse exec --model "$model" --effort "$effort" $lock --approval-mode never \
       --prompt-file "$RUN/brief-$name.md" > "$RUN/out-$name.md" 2> "$RUN/err-$name.log" < /dev/null
     echo "$name exit $?" >> "$RUN/status"
   ) &

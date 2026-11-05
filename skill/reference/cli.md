@@ -38,11 +38,13 @@ Any mix of seats in one script runs in parallel. The script can set `LIMIT` (sec
 
 | Mode | Set | What it can do |
 |---|---|---|
-| Read-only (default) | nothing | read the disk and answer. Claude and Grok have no web. Codex and Muse do |
+| Read-only (default) | nothing | read the disk and answer, no writes. Claude, Grok and Muse have no shell. Codex runs shell commands in a sandbox that blocks writes, because that's how it reads files. Claude and Grok have no web. Codex and Muse do |
 | Research | `RESEARCH=1` | also search and fetch the web on Claude and Grok |
 | Write | `WRITE=1` | edit and run things. Only ever in a worktree or scratch folder ([worktrees.md](worktrees.md)) |
 
-- Read-only locks stop writes and shell, but all of them can still read keys and other projects, so keep secrets out of it ("Access and risk" in SKILL.md).
+- Read-only locks stop writes, but all of them can still read keys and other projects, so keep secrets out of it ("Access and risk" in SKILL.md).
+- A read-only Codex seat can still run commands, builds included. Nothing turns that off without also stopping it reading files, so the brief tells it not to build or run test suites.
+- Every seat runs at background priority (`taskpolicy -b`), and so does anything it starts, so a child's work stays off the cores Mike is using.
 - Muse keeps its connectors server (Gmail, Notion and so on) in every mode, as nothing turns it off. The server holds sends and deletes for Mike's approval, and the brief says not to use it.
 - Grok's X search tools can't go in its read-only lock. For "what are people saying on X", use `WRITE=1` with `DIR` set to an empty scratch folder.
 - Grok `exit UNLOCKED` means a name in `--tools` wasn't recognised and it ran with every tool. Throw the answer away, check nothing changed in `DIR`, and fix the names in seats.zsh.
