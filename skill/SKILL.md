@@ -1,11 +1,19 @@
 ---
 name: delegate
-description: Get answers from other AI labs and models (Codex, Grok, Muse, Fable, Opus) and run multi-lab consensus panels, through the claude, codex, grok and muse CLIs with read-only locks that hold. Use only when Mike asks for it, e.g. he says send this to Codex (or Grok, Muse), get a second opinion or a review from another model or lab, consensus, or ask the panel. Covers the Convex rule for other labs, where jobs run, the brief template and checking the answers. Picking a Claude or Codex login is Threadbear's job, through pools, so ordinary work stays in the current thread.
+description: Get answers from other AI labs and models (Codex, Grok, Muse, Fable, Opus) and run multi-lab consensus panels, through the claude, codex, grok and muse CLIs with read-only locks that hold. Use when Mike asks for it, e.g. he says send this to Codex (or Grok, Muse), get a second opinion or a review from another model or lab, consensus, or ask the panel, and to review a security fix or non-trivial bug fix before calling it done. Covers the Convex rule for other labs, where jobs run, the brief template and checking the answers. Picking a Claude or Codex login is Threadbear's job, through pools, so ordinary work stays in the current thread.
 ---
 
 # delegate
 
-For a second opinion, a review from another lab, a consensus panel, or a job Mike wants on a particular provider. Use it only when he asks. Otherwise work in this thread, with built-in sub-agents if that helps.
+For a second opinion, a review from another lab, a consensus panel, or a job Mike wants on a particular provider. Use it when he asks, and without asking for one standing case: reviewing a security fix or a non-trivial bug fix before calling it done (CLAUDE.md, "Other accounts"). Otherwise work in this thread, with built-in sub-agents if that helps.
+
+## Reviewing a fix
+
+Mike asked on 5 Nov 2026, after Threadbear's security fixes came back from a second scan with 6 of 10 still open: spend the tokens on a cross-lab review before anyone says "fixed".
+
+- One Codex review (`gpt-6.1-sol`, effort `high`) in a worktree at the fix, task type Review. For Convex work, the Convex rule below still applies: use `claude-2`, not another lab.
+- Give it the original report word for word (for a scanner, the finding and its "Remediation tests"), the diff (`git diff <base>..<fix>`), and the job: try to break the fix. First-use and old-version paths, inputs an attacker controls, and every remediation test the report lists.
+- Check each thing it finds against the code, fix what holds up, and run the review again if the fix changed much. Tell Mike what it found and what you did about each.
 
 Threadbear's pools already move threads between Claude and Codex logins as they run out of room, so don't delegate just to find room. If you are yourself running as a delegate (your brief says so), do the work yourself.
 
