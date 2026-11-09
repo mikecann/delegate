@@ -14,6 +14,7 @@ Mike asked on 5 Nov 2026, after Threadbear's security fixes came back from a sec
 - One Codex review (`gpt-6.1-sol`, effort `high`) in a worktree at the fix, task type Review. For Convex work, the Convex rule below still applies: use `claude-2`, not another lab.
 - Give it the original report word for word (for a scanner, the finding and its "Remediation tests"), the diff (`git diff <base>..<fix>`), and the job: try to break the fix. First-use and old-version paths, inputs an attacker controls, and every remediation test the report lists.
 - Check each thing it finds against the code, fix what holds up, and run the review again if the fix changed much. Tell Mike what it found and what you did about each.
+- OpenAI's filter can stop Codex partway through a security review as "cybersecurity content" (it did twice on 9 Nov 2026). Don't reword the brief to get round it: send the same brief to Muse (until 13 Nov 2026), or to Grok with a timeout of 60 minutes or more, since 25 wasn't enough for a large diff.
 
 Threadbear's pools already move threads between Claude and Codex logins as they run out of room, so don't delegate just to find room. If you are yourself running as a delegate (your brief says so), do the work yourself.
 
