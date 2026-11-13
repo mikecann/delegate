@@ -37,7 +37,7 @@ If Mike names a model, use that. Always pass the effort.
 
 **Muse access ends on 13 Nov 2026** (Mike cancelled): after that, skip it everywhere in this skill. These IDs were current on 2 Nov 2026. If one has gone stale, `list_accounts` shows Claude and Codex models, and `grok models` shows Grok's.
 
-A Claude seat on the CLI has no pool, so it names a login: `main`, `claude-1` or `claude-3` for personal work, whichever has most room in `token-stats limits` (`main` shows as `[~/.claude]`). Skip one under 10%. Go through [seats.zsh](reference/seats.zsh) rather than running `claude` yourself: a plain `claude` in a thread inherits that thread's login.
+A Claude seat on the CLI has no pool, so it names a login: any Claude login but `claude-2` for personal work, whichever has most room in Threadbear's `list_accounts` (its `claude-main` is `main` here). Skip one under 10% or at its limit. Outside Threadbear, `tb accounts` lists the logins without their room: use the one starred `*` if it's a Claude login (Threadbear stars the login with most room, never `claude-2`); if it's Codex, ask Mike which Claude login to use. (Token Stats and `token-stats limits` were retired on 9 Nov 2026; checked 13 Nov 2026.) Go through [seats.zsh](reference/seats.zsh) rather than running `claude` yourself: a plain `claude` in a thread inherits that thread's login.
 
 ## The Convex rule
 

@@ -23,8 +23,10 @@
 _seat_clean() { env $(env | awk -F= '/^(CLAUDE|ANTHROPIC)/ {printf "-u %s ", $1}') "$@"; }
 
 # claude_seat <name> <account> <model> <effort>
-# account: claude-1, claude-2 or claude-3, or "main" for ~/.claude, which must leave
-# CLAUDE_CONFIG_DIR unset (setting it, even to ~/.claude, picks a different keychain login).
+# account: a login folder name (claude-1, claude-2, claude-3, claude-4), or "main" for
+# ~/.claude (Threadbear's claude-main), which must leave CLAUDE_CONFIG_DIR unset (setting
+# it, even to ~/.claude, picks a different keychain login). The login folders still live
+# under "Token Stats/Accounts" though Token Stats itself was retired on 9 Nov 2026.
 # --allowedTools doesn't lock anything: Mike's permission mode is auto, so writes and shell
 # still ran. --tools removes the tools, and --strict-mcp-config removes Gmail, Notion and
 # the rest, which --tools leaves in place.
