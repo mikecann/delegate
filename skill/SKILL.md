@@ -1,6 +1,6 @@
 ---
 name: delegate
-description: Get answers from other AI labs and models (Codex, Grok, Muse, Fable, Opus) and run multi-lab consensus panels, through the claude, codex, grok and muse CLIs with read-only locks that hold. Use when Mike asks for it, e.g. he says send this to Codex (or Grok, Muse), get a second opinion or a review from another model or lab, consensus, or ask the panel, and to review a security fix or non-trivial bug fix before calling it done. Covers the Convex rule for other labs, where jobs run, the brief template and checking the answers. Picking a Claude or Codex login is Threadbear's job, through pools, so ordinary work stays in the current thread.
+description: Get answers from other AI labs and models (Codex, Grok, Fable, Opus) and run multi-lab consensus panels, through the claude, codex and grok CLIs with read-only locks that hold. Use when Mike asks for it, e.g. he says send this to Codex (or Grok), get a second opinion or a review from another model or lab, consensus, or ask the panel, and to review a security fix or non-trivial bug fix before calling it done. Covers the Convex rule for other labs, where jobs run, the brief template and checking the answers. Picking a Claude or Codex login is Threadbear's job, through pools, so ordinary work stays in the current thread.
 ---
 
 # delegate
@@ -14,13 +14,13 @@ Mike asked on 5 Nov 2026, after Threadbear's security fixes came back from a sec
 - One Codex review (`gpt-6.1-sol`, effort `high`) in a worktree at the fix, task type Review. For Convex work, the Convex rule below still applies: use `claude-2`, not another lab.
 - Give it the original report word for word (for a scanner, the finding and its "Remediation tests"), the diff (`git diff <base>..<fix>`), and the job: try to break the fix. First-use and old-version paths, inputs an attacker controls, and every remediation test the report lists.
 - Check each thing it finds against the code, fix what holds up, and run the review again if the fix changed much. Tell Mike what it found and what you did about each.
-- OpenAI's filter can stop Codex partway through a security review as "cybersecurity content" (it did twice on 9 Nov 2026). Don't reword the brief to get round it: send the same brief to Muse (until 13 Nov 2026), or to Grok with a timeout of 60 minutes or more, since 25 wasn't enough for a large diff.
+- OpenAI's filter can stop Codex partway through a security review as "cybersecurity content" (it did twice on 9 Nov 2026). Don't reword the brief to get round it: send the same brief to Grok with a timeout of 60 minutes or more, since 25 wasn't enough for a large diff.
 
 Threadbear's pools already move threads between Claude and Codex logins as they run out of room, so don't delegate just to find room. If you are yourself running as a delegate (your brief says so), do the work yourself.
 
 ## Routes
 
-- **Read-only answers, panels, and anything for Grok or Muse:** the CLIs, through [reference/cli.md](reference/cli.md). Grok and Muse aren't Threadbear accounts, and a Threadbear thread can't be read-only.
+- **Read-only answers, panels, and anything for Grok:** the CLIs, through [reference/cli.md](reference/cli.md). Grok isn't a Threadbear account, and a Threadbear thread can't be read-only.
 - **A Claude or Codex job Mike wants to watch or take over:** a new thread, with `create_thread` or `tb new`. Pass the whole brief, `pool` (`claude` or `codex`), `model`, `effort`, `folder`, `title` and `why`. Convex work sets `account: "claude-2"` instead of a pool, because a Convex repo outside `~/dev/convex` would otherwise land on a personal login. A thread doesn't report back by itself, so read it later with `read_thread`, or add `--wait` to `tb new` in a background Bash to get the transcript when it finishes. A thread has full access, so a write job's `folder` is a worktree.
 
 ## Models
@@ -32,10 +32,9 @@ If Mike names a model, use that. Always pass the effort.
 | Opus | `claude-opus-5-5` | `opus` | `xhigh`, or `max` for hard problems |
 | Codex | `gpt-6.1-sol` | `gpt-6.1-sol` | `high` |
 | Grok (the pick for current events and X) | `grok-4.7` | not available | `high` |
-| Muse | `muse-wonder-full-1.0` | not available | `high` |
 | Consensus chair | `claude-fable-5-1` | `fable` | `high` |
 
-**Muse access ends on 13 Nov 2026** (Mike cancelled): after that, skip it everywhere in this skill. These IDs were current on 2 Nov 2026. If one has gone stale, `list_accounts` shows Claude and Codex models, and `grok models` shows Grok's.
+Muse is gone: Mike cancelled it and its paid model stopped on 13 Nov 2026, so don't add it back unless he resubscribes. These IDs were current on 2 Nov 2026. If one has gone stale, `list_accounts` shows Claude and Codex models, and `grok models` shows Grok's.
 
 A Claude seat on the CLI has no pool, so it names a login: any Claude login but `claude-2` for personal work, whichever has most room in Threadbear's `list_accounts` (its `claude-main` is `main` here). Skip one under 10% or at its limit. Outside Threadbear, `tb accounts` lists the logins without their room: use the one starred `*` if it's a Claude login (Threadbear stars the login with most room, never `claude-2`); if it's Codex, ask Mike which Claude login to use. (Token Stats and `token-stats limits` were retired on 9 Nov 2026; checked 13 Nov 2026.) Go through [seats.zsh](reference/seats.zsh) rather than running `claude` yourself: a plain `claude` in a thread inherits that thread's login.
 
@@ -131,9 +130,9 @@ A child's answer is a report, not proof. Before telling Mike something is done o
 
 ## Consensus
 
-For a decision worth several opinions, send the same neutral question to Codex, Grok, Muse (until 13 Nov 2026) and Opus in parallel, hide who said what, and have a fresh Fable chair write up the consensus, the disagreements and the best minority point. Mike is happy to try as many model combinations as possible, so go wide for anything that matters. The recipe, briefs and chair prompt are in [reference/consensus.md](reference/consensus.md).
+For a decision worth several opinions, send the same neutral question to Codex, Grok and Opus in parallel, hide who said what, and have a fresh Fable chair write up the consensus, the disagreements and the best minority point. Mike is happy to try as many model combinations as possible, so go wide for anything that matters. The recipe, briefs and chair prompt are in [reference/consensus.md](reference/consensus.md).
 
 ## If something goes wrong
 
 - A failed CLI job: `seats_wait` names it, and [reference/cli.md](reference/cli.md) has the usual causes. A panel carries on without a seat that failed. Don't report on a job you got no answer from.
-- A provider that needs signing in again: only Mike can do that, so tell him which one and carry on without it. He can use `claude auth login` for `main`, `CLAUDE_CONFIG_DIR="<its folder>" claude auth login` for the others, and `codex login`, `grok login` or `muse login`. Never write to credential files or the keychain yourself.
+- A provider that needs signing in again: only Mike can do that, so tell him which one and carry on without it. He can use `claude auth login` for `main`, `CLAUDE_CONFIG_DIR="<its folder>" claude auth login` for the others, and `codex login` or `grok login`. Never write to credential files or the keychain yourself.

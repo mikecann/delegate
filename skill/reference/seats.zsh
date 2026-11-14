@@ -1,4 +1,4 @@
-# Run delegate jobs through the claude, codex, grok and muse CLIs. Source this from a
+# Run delegate jobs through the claude, codex and grok CLIs. Source this from a
 # zsh script, set RUN and DIR, start seats, then call seats_wait. See cli.md.
 #
 # Every flag here was tested on 2 Nov 2026 by asking the model to write a file, run a
@@ -80,20 +80,6 @@ grok_seat() {
     local code=$?
     grep -q 'name no tool' "$RUN/err-$name.log" && code=UNLOCKED
     echo "$name exit $code" >> "$RUN/status"
-  ) &
-}
-
-# muse_seat <name> <model> <effort>
-# Muse access ends 13 Nov 2026. --disable-write and --disable-shell both held, but nothing
-# turns off its connectors server, so the brief is the guard there. It retries a failing
-# stream every 60s up to 10 times, hence the shorter default limit.
-muse_seat() {
-  local name=$1 model=$2 effort=$3 lock=(--disable-write --disable-shell)
-  [[ -n $WRITE ]] && lock=()
-  (
-    cd "$DIR" && taskpolicy -b timeout ${LIMIT:-600} muse exec --model "$model" --effort "$effort" $lock --approval-mode never \
-      --prompt-file "$RUN/brief-$name.md" > "$RUN/out-$name.md" 2> "$RUN/err-$name.log" < /dev/null
-    echo "$name exit $?" >> "$RUN/status"
   ) &
 }
 
