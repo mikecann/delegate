@@ -15,6 +15,7 @@ Mike asked on 5 Nov 2026, after Threadbear's security fixes came back from a sec
 - Give it the original report word for word (for a scanner, the finding and its "Remediation tests"), the diff (`git diff <base>..<fix>`), and the job: try to break the fix. First-use and old-version paths, inputs an attacker controls, and every remediation test the report lists.
 - Check each thing it finds against the code, fix what holds up, and run the review again if the fix changed much. Tell Mike what it found and what you did about each.
 - OpenAI's filter can stop Codex partway through a security review as "cybersecurity content" (it did twice on 9 Nov 2026). Don't reword the brief to get round it: send the same brief to Grok with a timeout of 60 minutes or more, since 25 wasn't enough for a large diff.
+- When Codex is out of room (Threadbear's Usage or `list_accounts` shows the Codex login used up, or the seat fails with a usage-limit error), don't wait for the reset or skip the review: send the same brief to Grok (`grok-4.7`, `high`, `LIMIT=3600`). Mike asked for this on 15 Nov 2026 when his Codex week ran out. Grok is still another lab, so the review counts. There's no Google (Gemini) seat yet: no Gemini CLI or login on the M5.
 
 Threadbear's pools already move threads between Claude and Codex logins as they run out of room, so don't delegate just to find room. If you are yourself running as a delegate (your brief says so), do the work yourself.
 
