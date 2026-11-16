@@ -29,6 +29,7 @@ The seats, with the models and efforts from SKILL.md:
 claude_seat <name> main|claude-1|claude-2|claude-3 <model> <effort>
 codex_seat  <name> <model> <effort>
 grok_seat   <name> <model> <effort>
+opencode_seat <name> opencode/<model> <effort>   # effort is low, high or max
 ```
 
 Any mix of seats in one script runs in parallel. The script can set `LIMIT` (seconds per seat) above the `source` line.
@@ -37,8 +38,8 @@ Any mix of seats in one script runs in parallel. The script can set `LIMIT` (sec
 
 | Mode | Set | What it can do |
 |---|---|---|
-| Read-only (default) | nothing | read the disk and answer, no writes. Claude and Grok have no shell. Codex runs shell commands in a sandbox that blocks writes, because that's how it reads files. Claude and Grok have no web. Codex does |
-| Research | `RESEARCH=1` | also search and fetch the web on Claude and Grok |
+| Read-only (default) | nothing | read the disk and answer, no writes. Claude, Grok and OpenCode have no shell, and OpenCode can't read outside `DIR`. Codex runs shell commands in a sandbox that blocks writes, because that's how it reads files. Claude and Grok have no web. Codex does |
+| Research | `RESEARCH=1` | also search and fetch the web on Claude, Grok and OpenCode |
 | Write | `WRITE=1` | edit and run things. Only ever in a worktree or scratch folder ([worktrees.md](worktrees.md)) |
 
 - Read-only locks stop writes, but all of them can still read keys and other projects, so keep secrets out of it ("Access and risk" in SKILL.md).
@@ -60,5 +61,6 @@ env -u CLAUDE_CONFIG_DIR claude auth status    # ~/.claude
 
 - `FAILED <name> (exit 124)`: it hit `LIMIT`. Split the job or raise the limit.
 - A seat that exits 0 with an empty answer counts as failed. Look in `err-<name>.log`. Codex's answer is in `out-<name>.md` and everything else it prints is in the log.
+- OpenCode `401 api_key_expired`: its Zen key has run out. Mike makes a new one at opencode.ai/console/account#api-keys (Default Chrome profile, model request and usage read access only) and it goes into `~/.local/share/opencode/auth.json` under `opencode.key`.
 - Claude's `MCP servers blocked by enterprise policy` warning on `claude-2` is normal too.
 - Claude's `SessionStart` hooks and global instructions still load on a locked seat, which is why the brief opens with the delegate preamble.

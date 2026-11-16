@@ -1,4 +1,4 @@
-# Run delegate jobs through the claude, codex and grok CLIs. Source this from a
+# Run delegate jobs through the claude, codex, grok and opencode CLIs. Source this from a
 # zsh script, set RUN and DIR, start seats, then call seats_wait. See cli.md.
 #
 # Every flag here was tested on 2 Nov 2026 by asking the model to write a file, run a
@@ -80,6 +80,27 @@ grok_seat() {
     local code=$?
     grep -q 'name no tool' "$RUN/err-$name.log" && code=UNLOCKED
     echo "$name exit $code" >> "$RUN/status"
+  ) &
+}
+
+# opencode_seat <name> <model> <effort>
+# OpenCode bills Mike's OpenCode Zen balance (opencode.ai/console), not a subscription, and
+# reaches other labs' models through it: opencode/gpt-6.1-sol, opencode/grok-4.7, Gemini.
+# The lock is the permission config: "*" deny with read, grep, glob and list allowed. Denied
+# tools aren't offered to the model at all, and a control run without it wrote a file and ran
+# shell (tested 17 Nov 2026). --pure drops Mike's plugins, and the two DISABLE flags drop a
+# project opencode.json and Claude Code's skills and MCP servers. Reading outside DIR is
+# denied too. effort goes to --variant (low, high, max).
+opencode_seat() {
+  local name=$1 model=$2 effort=$3
+  local cfg='{"permission":{"*":"deny","read":"allow","grep":"allow","glob":"allow","list":"allow"RESEARCH_TOOLS},"mcp":{}}'
+  cfg=${cfg/RESEARCH_TOOLS/${RESEARCH:+,\"webfetch\":\"allow\",\"websearch\":\"allow\"}}
+  [[ -n $WRITE ]] && cfg='{"mcp":{}}'
+  (
+    env OPENCODE_PURE=1 OPENCODE_DISABLE_PROJECT_CONFIG=1 OPENCODE_DISABLE_CLAUDE_CODE=1 OPENCODE_CONFIG_CONTENT="$cfg" \
+      taskpolicy -b timeout ${LIMIT:-900} ~/.opencode/bin/opencode run -m "$model" --variant "$effort" --dir "$DIR" \
+      "$(< "$RUN/brief-$name.md")" < /dev/null > "$RUN/out-$name.md" 2> "$RUN/err-$name.log"
+    echo "$name exit $?" >> "$RUN/status"
   ) &
 }
 
