@@ -88,19 +88,54 @@ grok_seat() {
 # reaches other labs' models through it: opencode/gpt-6.1-sol, opencode/grok-4.7, Gemini.
 # The lock is the permission config: "*" deny with read, grep, glob and list allowed. Denied
 # tools aren't offered to the model at all, and a control run without it wrote a file and ran
-# shell (tested 17 Nov 2026). --pure drops Mike's plugins, and the two DISABLE flags drop a
-# project opencode.json and Claude Code's skills and MCP servers. Reading outside DIR is
-# denied too. effort goes to --variant (low, high, max).
+# shell (tested 17 Nov 2026). The two DISABLE flags drop a project opencode.json and Claude
+# Code's skills and MCP servers. Reading outside DIR is denied too. effort is the variant
+# (low, high, max).
+# OpenCode 2 (17 Nov 2026) changed three things the lock rests on. `run` talks to a shared
+# background server (`opencode service`) by default and takes that server's config, not
+# this one's: with a permissive server up, a deny-all run still wrote a file. --standalone
+# gives it a private server, where the lock held. --pure, --variant and --dir are gone: the
+# plugins rule turns Mike's plugins off and OpenCode's own (`opencode.*`) back on, the
+# variant goes on the model as model#variant, and the job runs from DIR. 1 ignores the rule.
+# 2 also imports a plugin (running its top-level code) before that rule applies, and starts
+# the user's MCP servers, so it gets an empty OPENCODE_CONFIG_DIR of its own, which replaces
+# ~/.config/opencode there (1 adds it as an extra, empty folder). 2 reads
+# OPENCODE_CONFIG_PROJECT_DISABLE before the older name, so both are set, and OPENCODE_CONFIG
+# (one more file, read even with the project off) is blanked, which reads as unset.
+# OpenCode 1 imports a folder's .opencode/plugins/*.js whatever it's told (1.19.5, 17 Nov
+# 2026), so a locked seat on 1 refuses a DIR with plugins up the tree.
+# OPENCODE_BIN: another OpenCode to try (tests).
 opencode_seat() {
-  local name=$1 model=$2 effort=$3
-  local cfg='{"permission":{"*":"deny","read":"allow","grep":"allow","glob":"allow","list":"allow"RESEARCH_TOOLS},"mcp":{}}'
+  local name=$1 model=$2 effort=$3 oc=${OPENCODE_BIN:-~/.opencode/bin/opencode} run=()
+  local cfg='{"permission":{"*":"deny","read":"allow","grep":"allow","glob":"allow","list":"allow"RESEARCH_TOOLS},"mcp":{},"plugins":["-*","opencode.*"]}'
   cfg=${cfg/RESEARCH_TOOLS/${RESEARCH:+,\"webfetch\":\"allow\",\"websearch\":\"allow\"}}
-  [[ -n $WRITE ]] && cfg='{"mcp":{}}'
+  [[ -n $WRITE ]] && cfg='{"mcp":{},"plugins":["-*","opencode.*"]}'
+  if [[ $("$oc" --version 2>/dev/null) =~ '(^|[[:space:]])v?([0-9]+)\.' && $match[2] -ge 2 ]]; then
+    run=(run --standalone -m "$model#$effort")
+  else
+    run=(run -m "$model" --variant "$effort" --dir "$DIR")
+    local d=${DIR:A} p
+    while [[ -z $WRITE ]]; do
+      for p in $d/.opencode/plugin $d/.opencode/plugins; do
+        if [[ -d $p && -n $(ls -A "$p" 2>/dev/null) ]]; then
+          print -r -- "OpenCode 1 would run the plugins in $p before the read-only lock applies. Update it (opencode upgrade --major) or use another seat." > "$RUN/err-$name.log"
+          : > "$RUN/out-$name.md"; echo "$name exit REFUSED" >> "$RUN/status"
+          return 1
+        fi
+      done
+      [[ $d == / ]] && break
+      d=${d:h}
+    done
+  fi
   (
-    env OPENCODE_PURE=1 OPENCODE_DISABLE_PROJECT_CONFIG=1 OPENCODE_DISABLE_CLAUDE_CODE=1 OPENCODE_CONFIG_CONTENT="$cfg" \
-      taskpolicy -b timeout ${LIMIT:-900} ~/.opencode/bin/opencode run -m "$model" --variant "$effort" --dir "$DIR" \
+    local empty; empty=$(mktemp -d "${TMPDIR:-/tmp}/delegate-opencode-config.XXXXXX") || exit 1
+    cd "$DIR" && env OPENCODE_PURE=1 OPENCODE_DISABLE_PROJECT_CONFIG=1 OPENCODE_CONFIG_PROJECT_DISABLE=1 OPENCODE_CONFIG_DIR="$empty" OPENCODE_CONFIG= \
+      OPENCODE_DISABLE_CLAUDE_CODE=1 OPENCODE_CONFIG_CONTENT="$cfg" \
+      taskpolicy -b timeout ${LIMIT:-900} "$oc" $run \
       "$(< "$RUN/brief-$name.md")" < /dev/null > "$RUN/out-$name.md" 2> "$RUN/err-$name.log"
-    echo "$name exit $?" >> "$RUN/status"
+    local code=$?
+    rm -rf "$empty"
+    echo "$name exit $code" >> "$RUN/status"
   ) &
 }
 
