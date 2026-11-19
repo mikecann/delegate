@@ -148,7 +148,8 @@ opencode_seat() {
 # The key is the "Delegate reviews (M5)" key in AI Studio project Gemini Reviews
 # (gen-lang-client-0128847654), billed to the Convex billing account (Convex Ramp card) with
 # prepay and a US$90/month spend cap that pauses the API. model is a Gemini API name such as
-# gemini-4-carbon. The key only reaches OpenCode through the environment of this seat's own
+# gemini-4-neon. The brief gets the reading budget below appended, and the run's cost lands in
+# cost-<name>.txt. The key only reaches OpenCode through the environment of this seat's own
 # subshell.
 # Tier 1 allows 2M input tokens a minute, and a review that reads a lot of files resends a
 # big context every turn, so it hits that a few minutes in. OpenCode treats Google's 429 for
@@ -173,11 +174,37 @@ gemini_seat() {
       : > "$RUN/out-$name.md"; echo "$name exit NOPROXY" >> "$RUN/status"
       kill $proxy 2>/dev/null; exit 1
     fi
+    [[ -z $GEMINI_ROAM ]] && ! grep -q '^## Reading budget' "$RUN/brief-$name.md" && print -r -- "$_gemini_lean" >> "$RUN/brief-$name.md"
     export GOOGLE_GENERATIVE_AI_API_KEY=$(tr -d '\n' < $key)
     _oc_provider="{\"google\":{\"options\":{\"baseURL\":\"http://127.0.0.1:$(< $portf)/v1beta\"}}}"
+    local since=$(( $(date +%s) * 1000 ))
     opencode_seat "$name" "google/$model" "$effort" && wait $!
     kill $proxy 2>/dev/null; rm -f "$portf"
+    _gemini_cost "$name" $since
   ) &
+}
+
+# Pay-per-token seats are billed for every token on every step, and an agent re-sends all it
+# has read each step. On 19 Nov 2026 Carbon reviews that roamed the repo cost US$1-3 each
+# (5-11M tokens) and used half the US$90 monthly cap in two hours. The same Tandem review with
+# the diff inline and this budget cost US$1.04 on Neon (US$3.31 roaming) and found the same
+# main bugs. GEMINI_ROAM=1 leaves it off for a job that really has to explore.
+_gemini_lean='
+## Reading budget
+
+Every file you read stays in your context and is billed again on every later step, so work mostly from what this brief gives you (the diff, the code it quotes):
+- Read a file outside it only to confirm or rule out a specific suspicion, and only the lines you need (use offsets), never whole large files.
+- Aim for about 8 reads or searches in total, then write your answer. Never re-read something you have already seen.'
+
+# Writes OpenCode's own cost estimate for the seat's run to cost-<name>.txt, which seats_wait
+# prints. Google's bill can come out higher than this (19 Nov 2026: about US$29 here against
+# a cap alert at US$45), so it's a guide, not the bill.
+_gemini_cost() {
+  local name=$1 since=$2 db=~/.local/share/opencode/opencode.db dir=${DIR:A}
+  [[ -r $db ]] || return 0
+  /usr/bin/sqlite3 -readonly "file:$db?mode=ro" \
+    "select printf('US\$%.2f, %dk new + %dk cached input, %dk output', sum(cost), sum(tokens_input)/1000, sum(tokens_cache_read)/1000, sum(tokens_output+tokens_reasoning)/1000) from session_v2 where directory in ('${dir//\'/\'\'}', '${DIR//\'/\'\'}') and time_created >= $since" \
+    > "$RUN/cost-$name.txt" 2>/dev/null
 }
 
 # Waits for every seat, then prints how each went. A CLI can exit 0 with no answer, so a
@@ -188,5 +215,6 @@ seats_wait() {
   while read -r line; do
     name=${line%% *}; code=${line##* }
     if [[ $code == 0 && -s $RUN/out-$name.md ]]; then echo "ok      $name"; else echo "FAILED  $name (exit $code, see err-$name.log)"; fi
+    [[ -s $RUN/cost-$name.txt ]] && echo "        cost $(< $RUN/cost-$name.txt)"
   done < "$RUN/status"
 }

@@ -30,7 +30,7 @@ claude_seat <name> main|claude-1|claude-2|claude-3 <model> <effort>
 codex_seat  <name> <model> <effort>
 grok_seat   <name> <model> <effort>
 opencode_seat <name> opencode/<model> <effort>   # effort is low, high or max
-gemini_seat <name> <model> <effort>   # e.g. gemini-4-carbon high; OpenCode's lock, Mike's Gemini API key
+gemini_seat <name> <model> <effort>   # e.g. gemini-4-neon high; OpenCode's lock, Mike's Gemini API key
 ```
 
 Any mix of seats in one script runs in parallel. The script can set `LIMIT` (seconds per seat) above the `source` line.
