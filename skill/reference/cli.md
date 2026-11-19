@@ -30,8 +30,8 @@ claude_seat <name> main|claude-1|claude-2|claude-3 <model> <effort>
 codex_seat  <name> <model> <effort>
 grok_seat   <name> <model> <effort>
 opencode_seat <name> opencode/<model> <effort>   # effort is low, high or max
-gemini_seat <name> <model> <effort>   # e.g. gemini-4-neon high; OpenCode's lock, Mike's Gemini API key
-agy_seat    <name> <model>            # Google's Antigravity agent on Mike's Google plan, model from agy_models, e.g. gemini-3.8-flash
+agy_seat    <name> <model>            # the Gemini default: Google's Antigravity agent on Mike's Google plan, e.g. gemini-4-neon
+gemini_seat <name> <model> <effort>   # the Gemini fallback, e.g. gemini-4-neon high; OpenCode's lock, the paid Gemini API key
 ```
 
 Any mix of seats in one script runs in parallel. The script can set `LIMIT` (seconds per seat) above the `source` line.
@@ -55,7 +55,7 @@ Any mix of seats in one script runs in parallel. The script can set `LIMIT` (sec
 `agy_seat` runs Google's `agy_acp_server` (from the ACP Registry, signed by Google, pinned to 1.4.5 because 1.5.0 never finishes starting a session here) through [agy-acp.py](agy-acp.py), the way T3 Code does. It's installed in `~/.delegate/agy-acp/` and signed in from `~/.delegate/agy-home`, apart from `~/.gemini`. The lock is ACP's permission prompts. File reads run without asking. The agent has no listing or code-search tool of its own and runs `grep` and `ls` in a shell instead, so a read-only seat allows one plain `grep`, `ls`, `cat`, `head`, `tail`, `wc` or `stat` with no pipes, redirects, `;`, `&`, `$` or backticks. These programs have no option that writes or runs anything, which matters because the shell still expands braces and globs after the check (`find` came out for that: `{-exec,touch}`). Other commands, file writes and subagents are refused, and so are web searches and fetches unless `RESEARCH` is set. Tested 19 Nov 2026: `grep` and `ls` ran, `touch`, `grep > file`, file creation and web search were refused, and the folder was unchanged. It can still read outside `DIR`, like the Claude and Grok seats.
 
 - Sign in (first time, or after `exit NOLOGIN`): run `source seats.zsh; agy_login` in the background. It installs the server if needed and prints a `Sign in here:` link. Open it in Mike's personal Chrome profile with `browserbear open <link> --profile mike.cann@gmail.com`, pick mike.cann@gmail.com and click Sign in (no password was needed on 19 Nov 2026). It prints the plan when done.
-- Models depend on the plan: `source seats.zsh; agy_models` lists them. The free plan gave only `gemini-3.8-flash` (19 Nov 2026).
+- Models depend on the plan: `source seats.zsh; agy_models` lists them. On 19 Nov 2026 it went from only `gemini-3.8-flash` to `gemini-4-neon`, `gemini-4-carbon`, `gemini-4-argon`, `gemini-4-hydrogen` and `gemini-3.8-flash`.
 - To try a newer server, set `AGY_VERSION` and check `session/new` answers within a minute before switching. The registry's current build is at `https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json`.
 
 ## Checking who pays
@@ -74,9 +74,10 @@ env -u CLAUDE_CONFIG_DIR claude auth status    # ~/.claude
 - OpenCode `401 api_key_expired`: its Zen key has run out. Mike makes a new one at opencode.ai/console/account#api-keys (Default Chrome profile, model request and usage read access only) and it goes into `~/.local/share/opencode/auth.json` under `opencode.key`.
 - Gemini `exit NOKEY`: `~/.config/gemini/api-key` is missing. The key is "Delegate reviews (M5)" in [AI Studio](https://aistudio.google.com/apikey) (project Gemini Reviews, Mike's personal Google account). Its copy button puts it on the clipboard only while Chrome is frontmost, and new keys start `AQ.`, not `AIza`.
 - Gemini `Generate content input tokens per minute limit exceeded on Tier 1`: the key's per-minute rate limit (2M input tokens a minute), not the spend cap or the credit, so it's no reason to bother Mike or look at a bigger plan. `gemini_seat` waits these out through gemini-wait.py, and `wait-<name>.log` shows each wait. If one still kills a seat, the waits ran out (12 in a row) or the 429 wasn't marked per-minute: check the log, and fix gemini-wait.py rather than rerunning blind. A seat that waits a lot runs long, so give big reviews `LIMIT=3600`.
-- Antigravity `exit 4`: the agent answered with a capacity or quota error (the free plan does this often). Try another model or later.
+- Antigravity `exit 4`: the agent answered with a capacity or quota error (the free plan did this often). Try another model, or send a fix review to `gemini_seat`.
 - Antigravity `exit NOLOGIN`: not installed or not signed in. Run `agy_login` (above).
 - Gemini `exit NOPROXY`: gemini-wait.py didn't start (it runs on `/usr/bin/python3`).
-- Other Gemini errors about billing, quota or a paused service: the US$90 monthly spend cap or the prepaid credit ran out. Don't raise either; tell Mike (cap: [Budgets and caps](https://console.cloud.google.com/billing/017432-88C7C0-85D05A/budgets), credit: [AI Studio billing](https://aistudio.google.com/billing?billing=017432-88C7C0-85D05A)).
+- Gemini `FAILED <name> (Gemini API spend cap hit, ...)`: Google answered 403 "Spend cap breached". The key's US$90 monthly cap is used up (it was from 19 Nov 2026 until it reset on 1 Dec). Every call fails until the month turns or Mike raises the cap, so use `agy_seat` and tell Mike. Never raise it yourself.
+- Other Gemini errors about billing, quota or a paused service: the spend cap or the prepaid credit ran out. Don't raise either; tell Mike (cap: [Budgets and caps](https://console.cloud.google.com/billing/017432-88C7C0-85D05A/budgets), credit: [AI Studio billing](https://aistudio.google.com/billing?billing=017432-88C7C0-85D05A)).
 - Claude's `MCP servers blocked by enterprise policy` warning on `claude-2` is normal too.
 - Claude's `SessionStart` hooks and global instructions still load on a locked seat, which is why the brief opens with the delegate preamble.

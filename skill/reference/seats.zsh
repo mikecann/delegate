@@ -143,8 +143,7 @@ opencode_seat() {
 
 # gemini_seat <name> <model> <effort>
 # Google's models on Mike's own Gemini API key, through OpenCode with opencode_seat's lock.
-# Google's subscriptions (AI Pro, Ultra) can't be used: its FAQ bars driving its `agy` CLI
-# from another agent on a consumer plan, and that can suspend the account (19 Nov 2026).
+# The fallback Gemini seat: agy_seat (below) is the default, on Mike's Google plan.
 # The key is the "Delegate reviews (M5)" key in AI Studio project Gemini Reviews
 # (gen-lang-client-0128847654), billed to the Convex billing account (Convex Ramp card) with
 # prepay and a US$90/month spend cap that pauses the API. model is a Gemini API name such as
@@ -215,7 +214,7 @@ _gemini_cost() {
 # The lock is ACP's permission flow (see agy-acp.py): only read and search tool calls are
 # allowed, fetch too with RESEARCH, everything with WRITE. It runs from its own GEMINI_HOME
 # (~/.delegate/agy-home), so ~/.gemini's MCP servers and settings don't load. model is a
-# value from the session's model list, e.g. gemini-3.8-flash (agy_models lists them); empty keeps the default.
+# value from the session's model list, e.g. gemini-4-neon (agy_models lists them); empty keeps the default.
 # Pinned to 1.4.5: 1.5.0's session/new never answers on this Mac (19 Nov 2026).
 # Not signed in: agy_login, see cli.md.
 AGY_VERSION=1.4.5
@@ -277,13 +276,18 @@ agy_seat() {
 }
 
 # Waits for every seat, then prints how each went. A CLI can exit 0 with no answer, so a
-# seat only counts as ok with a non-empty answer. 124 means it hit LIMIT.
+# seat only counts as ok with a non-empty answer. 124 means it hit LIMIT. A Gemini API key
+# over its monthly spend cap answers 403 "Spend cap breached" on every call (19 Nov 2026),
+# which only Mike can lift, so that one is named rather than left in the log.
 seats_wait() {
   wait
   local line name code
   while read -r line; do
     name=${line%% *}; code=${line##* }
-    if [[ $code == 0 && -s $RUN/out-$name.md ]]; then echo "ok      $name"; else echo "FAILED  $name (exit $code, see err-$name.log)"; fi
+    if [[ $code == 0 && -s $RUN/out-$name.md ]]; then echo "ok      $name"
+    elif grep -qi 'spend cap breached' "$RUN/err-$name.log" 2>/dev/null; then echo "FAILED  $name (Gemini API spend cap hit, tell Mike; use agy_seat meanwhile)"
+    else echo "FAILED  $name (exit $code, see err-$name.log)"; fi
     [[ -s $RUN/cost-$name.txt ]] && echo "        cost $(< $RUN/cost-$name.txt)"
   done < "$RUN/status"
+  return 0
 }
