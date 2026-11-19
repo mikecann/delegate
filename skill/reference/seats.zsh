@@ -20,6 +20,7 @@
 # A thread's environment carries its own login and session (CLAUDE_CONFIG_DIR,
 # CLAUDE_EFFORT and more), so a child claude would bill the thread's account without this.
 # Don't use env -i: wiping everything breaks Codex's ChatGPT login.
+_seats_dir=${${(%):-%x}:A:h}
 _seat_clean() { env $(env | awk -F= '/^(CLAUDE|ANTHROPIC)/ {printf "-u %s ", $1}') "$@"; }
 
 # claude_seat <name> <account> <model> <effort>
@@ -110,6 +111,7 @@ opencode_seat() {
   local cfg='{"permission":{"*":"deny","read":"allow","grep":"allow","glob":"allow","list":"allow"RESEARCH_TOOLS},"mcp":{},"plugins":["-*","opencode.*"]}'
   cfg=${cfg/RESEARCH_TOOLS/${RESEARCH:+,\"webfetch\":\"allow\",\"websearch\":\"allow\"}}
   [[ -n $WRITE ]] && cfg='{"mcp":{},"plugins":["-*","opencode.*"]}'
+  [[ -n $_oc_provider ]] && cfg="${cfg%\}},\"provider\":$_oc_provider}"
   if [[ $("$oc" --version 2>/dev/null) =~ '(^|[[:space:]])v?([0-9]+)\.' && $match[2] -ge 2 ]]; then
     run=(run --standalone -m "$model#$effort")
   else
@@ -146,8 +148,13 @@ opencode_seat() {
 # The key is the "Delegate reviews (M5)" key in AI Studio project Gemini Reviews
 # (gen-lang-client-0128847654), billed to the Convex billing account (Convex Ramp card) with
 # prepay and a US$90/month spend cap that pauses the API. model is a Gemini API name such as
-# gemini-4-carbon. The key only reaches OpenCode through the environment, so it's exported
-# for the launch and unset straight after (the seat's background job keeps its copy).
+# gemini-4-carbon. The key only reaches OpenCode through the environment of this seat's own
+# subshell.
+# Tier 1 allows 2M input tokens a minute, and a review that reads a lot of files resends a
+# big context every turn, so it hits that a few minutes in. OpenCode treats Google's 429 for
+# it as a hard quota error and stops (19 Nov 2026), so OpenCode talks to Google through
+# gemini-wait.py, which waits out per-minute 429s and passes everything else on. Its log is
+# wait-<name>.log.
 gemini_seat() {
   local name=$1 model=$2 effort=$3 key=~/.config/gemini/api-key
   if [[ ! -s $key ]]; then
@@ -155,9 +162,22 @@ gemini_seat() {
     : > "$RUN/out-$name.md"; echo "$name exit NOKEY" >> "$RUN/status"
     return 1
   fi
-  export GOOGLE_GENERATIVE_AI_API_KEY=$(tr -d '\n' < $key)
-  opencode_seat "$name" "google/$model" "$effort"
-  unset GOOGLE_GENERATIVE_AI_API_KEY
+  (
+    local portf=$RUN/.wait-port-$name i
+    rm -f "$portf"
+    /usr/bin/python3 -I $_seats_dir/gemini-wait.py "$portf" "$RUN/wait-$name.log" &
+    local proxy=$!
+    for i in {1..50}; do [[ -s $portf ]] && break; sleep 0.1; done
+    if [[ ! -s $portf ]]; then
+      print -r -- "gemini-wait.py didn't start." > "$RUN/err-$name.log"
+      : > "$RUN/out-$name.md"; echo "$name exit NOPROXY" >> "$RUN/status"
+      kill $proxy 2>/dev/null; exit 1
+    fi
+    export GOOGLE_GENERATIVE_AI_API_KEY=$(tr -d '\n' < $key)
+    _oc_provider="{\"google\":{\"options\":{\"baseURL\":\"http://127.0.0.1:$(< $portf)/v1beta\"}}}"
+    opencode_seat "$name" "google/$model" "$effort" && wait $!
+    kill $proxy 2>/dev/null; rm -f "$portf"
+  ) &
 }
 
 # Waits for every seat, then prints how each went. A CLI can exit 0 with no answer, so a
