@@ -212,14 +212,15 @@ _gemini_cost() {
 # agy-acp.py, signed in with Mike's Google account. Google's FAQ says wrapping its agents
 # in another agent can suspend the account; Mike chose to take that risk on 19 Nov 2026.
 # The lock is ACP's permission flow (see agy-acp.py): only read and search tool calls are
-# allowed, fetch too with RESEARCH, everything with WRITE. It runs from its own GEMINI_HOME
-# (~/.delegate/agy-home), so ~/.gemini's MCP servers and settings don't load. model is a
+# allowed, fetch too with RESEARCH, everything with WRITE. It's signed in from Antigravity's
+# own ~/.gemini/antigravity-acp, the login Threadbear's Gemini threads use too (moved there
+# from ~/.delegate/agy-home on 20 Nov 2026). Any MCP tool it has is refused by the lock. model is a
 # value from the session's model list, e.g. gemini-4-neon (agy_models lists them); empty keeps the default.
 # Pinned to 1.4.5: 1.5.0's session/new never answers on this Mac (19 Nov 2026).
 # Not signed in: agy_login, see cli.md.
 AGY_VERSION=1.4.5
 _agy_env() {
-  local bin=~/.delegate/agy-acp/$AGY_VERSION home=~/.delegate/agy-home
+  local bin=~/.delegate/agy-acp/$AGY_VERSION home=~/.gemini
   mkdir -p -m 700 $home/antigravity-acp/tmp
   env -u GEMINI_API_KEY -u GOOGLE_API_KEY -u GOOGLE_GENERATIVE_AI_API_KEY -u GOOGLE_APPLICATION_CREDENTIALS \
     GEMINI_HOME=$home AGY_ACP_FORCE_FILE_STORAGE=1 PYTHONUNBUFFERED=1 TMPDIR=$home/antigravity-acp/tmp \
@@ -259,7 +260,7 @@ agy_login() {
     ~/.delegate/agy-acp/$AGY_VERSION/agy_acp_server.par login
 }
 agy_seat() {
-  local name=$1 model=$2 bin=~/.delegate/agy-acp/$AGY_VERSION mode=ro home=~/.delegate/agy-home
+  local name=$1 model=$2 bin=~/.delegate/agy-acp/$AGY_VERSION mode=ro home=~/.gemini
   [[ -n $RESEARCH ]] && mode=research
   [[ -n $WRITE ]] && mode=write
   if ! _agy_signed $bin/agy_acp_server.par || ! _agy_signed $bin/localharness_external \
