@@ -207,6 +207,75 @@ _gemini_cost() {
     > "$RUN/cost-$name.txt" 2>/dev/null
 }
 
+# agy_seat <name> <model>
+# Google's models on Mike's Google AI subscription, the way T3 Code runs them: Google's own
+# unmodified antigravity-acp server (the ACP Registry build) driven over ACP by
+# agy-acp.py, signed in with Mike's Google account. Google's FAQ says wrapping its agents
+# in another agent can suspend the account; Mike chose to take that risk on 19 Nov 2026.
+# The lock is ACP's permission flow (see agy-acp.py): only read and search tool calls are
+# allowed, fetch too with RESEARCH, everything with WRITE. It runs from its own GEMINI_HOME
+# (~/.delegate/agy-home), so ~/.gemini's MCP servers and settings don't load. model is a
+# value from the session's model list, e.g. gemini-3.8-flash (agy_models lists them); empty keeps the default.
+# Pinned to 1.4.5: 1.5.0's session/new never answers on this Mac (19 Nov 2026).
+# Not signed in: agy_login, see cli.md.
+AGY_VERSION=1.4.5
+_agy_env() {
+  local bin=~/.delegate/agy-acp/$AGY_VERSION home=~/.delegate/agy-home
+  mkdir -p -m 700 $home/antigravity-acp/tmp
+  env -u GEMINI_API_KEY -u GOOGLE_API_KEY -u GOOGLE_GENERATIVE_AI_API_KEY -u GOOGLE_APPLICATION_CREDENTIALS \
+    GEMINI_HOME=$home AGY_ACP_FORCE_FILE_STORAGE=1 PYTHONUNBUFFERED=1 TMPDIR=$home/antigravity-acp/tmp \
+    ANTIGRAVITY_HARNESS_PATH=$bin/localharness_external "$@"
+}
+
+# agy_install: downloads the pinned server from Google into a staging folder, checks both
+# binaries are intact and signed by Google (team EQHXZ8M8AV), then moves it into place, so
+# a half-finished install is never used. An existing install is checked the same way and
+# replaced if it fails.
+_agy_signed() { codesign --verify --strict -R='anchor apple generic and certificate leaf[subject.OU] = "EQHXZ8M8AV"' "$1" 2>/dev/null; }
+agy_install() {
+  local bin=~/.delegate/agy-acp/$AGY_VERSION stage
+  _agy_signed $bin/agy_acp_server.par && _agy_signed $bin/localharness_external && return 0
+  mkdir -p ~/.delegate/agy-acp && stage=$(mktemp -d ~/.delegate/agy-acp/.stage.XXXXXX) || return 1
+  if curl -fsSL -o $stage/agy.zip \
+      https://dl.google.com/agy-extensions/releases/macos/agy-acp-server-$AGY_VERSION-darwin-arm64.zip \
+    && unzip -oq $stage/agy.zip -d $stage/out \
+    && _agy_signed $stage/out/agy_acp_server.par && _agy_signed $stage/out/localharness_external; then
+    rm -rf $bin && mv $stage/out $bin && rm -rf $stage
+  else
+    print -r -- "agy_install: download failed or a binary isn't intact and signed by Google."
+    rm -rf $stage; return 1
+  fi
+}
+
+# agy_models: lists the models Mike's plan offers.
+agy_models() {
+  _agy_env BROWSER=/usr/bin/false timeout 120 /usr/bin/python3 -I $_seats_dir/agy-acp.py \
+    ~/.delegate/agy-acp/$AGY_VERSION/agy_acp_server.par models
+}
+
+# agy_login: prints a Google sign-in link and waits 5 minutes for it to be used.
+agy_login() {
+  agy_install || return 1
+  _agy_env BROWSER="/bin/echo %s" timeout 300 /usr/bin/python3 -I $_seats_dir/agy-acp.py \
+    ~/.delegate/agy-acp/$AGY_VERSION/agy_acp_server.par login
+}
+agy_seat() {
+  local name=$1 model=$2 bin=~/.delegate/agy-acp/$AGY_VERSION mode=ro home=~/.delegate/agy-home
+  [[ -n $RESEARCH ]] && mode=research
+  [[ -n $WRITE ]] && mode=write
+  if ! _agy_signed $bin/agy_acp_server.par || ! _agy_signed $bin/localharness_external \
+     || [[ ! -s $home/antigravity-acp/acp_token.json ]]; then
+    print -r -- "antigravity-acp $AGY_VERSION isn't installed (intact and signed by Google) or signed in (see cli.md)." > "$RUN/err-$name.log"
+    : > "$RUN/out-$name.md"; echo "$name exit NOLOGIN" >> "$RUN/status"
+    return 1
+  fi
+  (
+    _agy_env BROWSER=/usr/bin/false taskpolicy -b timeout ${LIMIT:-900} /usr/bin/python3 -I $_seats_dir/agy-acp.py $bin/agy_acp_server.par \
+      "$DIR" "$RUN/brief-$name.md" "$RUN/out-$name.md" "$model" $mode 2> "$RUN/err-$name.log"
+    echo "$name exit $?" >> "$RUN/status"
+  ) &
+}
+
 # Waits for every seat, then prints how each went. A CLI can exit 0 with no answer, so a
 # seat only counts as ok with a non-empty answer. 124 means it hit LIMIT.
 seats_wait() {
