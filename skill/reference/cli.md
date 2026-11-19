@@ -30,6 +30,7 @@ claude_seat <name> main|claude-1|claude-2|claude-3 <model> <effort>
 codex_seat  <name> <model> <effort>
 grok_seat   <name> <model> <effort>
 opencode_seat <name> opencode/<model> <effort>   # effort is low, high or max
+gemini_seat <name> <model> <effort>   # e.g. gemini-4-carbon high; OpenCode's lock, Mike's Gemini API key
 ```
 
 Any mix of seats in one script runs in parallel. The script can set `LIMIT` (seconds per seat) above the `source` line.
@@ -62,5 +63,7 @@ env -u CLAUDE_CONFIG_DIR claude auth status    # ~/.claude
 - `FAILED <name> (exit 124)`: it hit `LIMIT`. Split the job or raise the limit.
 - A seat that exits 0 with an empty answer counts as failed. Look in `err-<name>.log`. Codex's answer is in `out-<name>.md` and everything else it prints is in the log.
 - OpenCode `401 api_key_expired`: its Zen key has run out. Mike makes a new one at opencode.ai/console/account#api-keys (Default Chrome profile, model request and usage read access only) and it goes into `~/.local/share/opencode/auth.json` under `opencode.key`.
+- Gemini `exit NOKEY`: `~/.config/gemini/api-key` is missing. The key is "Delegate reviews (M5)" in [AI Studio](https://aistudio.google.com/apikey) (project Gemini Reviews, Mike's personal Google account). Its copy button puts it on the clipboard only while Chrome is frontmost, and new keys start `AQ.`, not `AIza`.
+- Gemini errors about billing, quota or a paused service: the US$90 monthly spend cap or the prepaid credit ran out. Don't raise either; tell Mike (cap: [Budgets and caps](https://console.cloud.google.com/billing/017432-88C7C0-85D05A/budgets), credit: [AI Studio billing](https://aistudio.google.com/billing?billing=017432-88C7C0-85D05A)).
 - Claude's `MCP servers blocked by enterprise policy` warning on `claude-2` is normal too.
 - Claude's `SessionStart` hooks and global instructions still load on a locked seat, which is why the brief opens with the delegate preamble.

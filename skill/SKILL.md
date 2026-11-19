@@ -1,6 +1,6 @@
 ---
 name: delegate
-description: Get answers from other AI labs and models (Codex, Grok, Fable, Opus) and run multi-lab consensus panels, through the claude, codex, grok and opencode CLIs with read-only locks that hold. Use when Mike asks for it, e.g. he says send this to Codex (or Grok), get a second opinion or a review from another model or lab, consensus, or ask the panel, and to review a security fix or non-trivial bug fix before calling it done. Covers the Convex rule for other labs, where jobs run, the brief template and checking the answers. Picking a Claude or Codex login is Threadbear's job, through pools, so ordinary work stays in the current thread.
+description: Get answers from other AI labs and models (Codex, Gemini, Grok, Fable, Opus) and run multi-lab consensus panels, through the claude, codex, grok and opencode CLIs with read-only locks that hold. Use when Mike asks for it, e.g. he says send this to Codex (or Grok), get a second opinion or a review from another model or lab, consensus, or ask the panel, and to review a security fix or non-trivial bug fix before calling it done. Covers the Convex rule for other labs, where jobs run, the brief template and checking the answers. Picking a Claude or Codex login is Threadbear's job, through pools, so ordinary work stays in the current thread.
 ---
 
 # delegate
@@ -11,12 +11,12 @@ For a second opinion, a review from another lab, a consensus panel, or a job Mik
 
 Mike asked on 5 Nov 2026, after Threadbear's security fixes came back from a second scan with 6 of 10 still open: spend the tokens on a cross-lab review before anyone says "fixed".
 
-- One Codex review (`gpt-6.1-sol`, effort `high`) in a worktree at the fix, task type Review. For Convex work, the Convex rule below still applies: use `claude-2`, not another lab.
+- One Codex review (`gpt-6.1-sol`, effort `high`) and one Gemini review (`gemini_seat review-gemini gemini-4-carbon high`) in parallel, in a worktree at the fix, task type Review. Mike asked on 19 Nov 2026 to give Gemini a good run, so it's on every fix review, not just a fallback. For Convex work, the Convex rule below still applies: use `claude-2`, not another lab.
 - Give it the original report word for word (for a scanner, the finding and its "Remediation tests"), the diff (`git diff <base>..<fix>`), and the job: try to break the fix. First-use and old-version paths, inputs an attacker controls, and every remediation test the report lists.
 - Check each thing it finds against the code, fix what holds up, and run the review again if the fix changed much. Tell Mike what it found and what you did about each.
 - OpenAI's filter can stop Codex partway through a security review as "cybersecurity content" (it did twice on 9 Nov 2026). Don't reword the brief to get round it: send the same brief to Grok with a timeout of 60 minutes or more, since 25 wasn't enough for a large diff.
-- When Codex is out of room (Threadbear's Usage or `list_accounts` shows the Codex login used up, or the seat fails with a usage-limit error), don't wait for the reset or skip the review: send the same brief to Grok (`grok-4.7`, `high`, `LIMIT=3600`). Mike asked for this on 15 Nov 2026 when his Codex week ran out. Grok is still another lab, so the review counts. There's no Gemini CLI on the M5, but OpenCode below reaches Gemini models.
-- When Grok is out too (HTTP 402 "usage balance exhausted", as on 16 Nov 2026), send the same brief through OpenCode: `opencode_seat review opencode/gpt-6.1-sol high` with `LIMIT=3600` (or `opencode/grok-4.7` if OpenAI's filter stops it). OpenCode bills Mike's OpenCode Zen balance ($20 on 17 Nov 2026, about $0.04 for the lock tests; its key, "delegate seats (M5)", expires about 15 Feb 2027), and the balance is on [the console](https://opencode.ai/console) in his Default Chrome profile. It's still another lab, so the review counts. It also has Gemini models, if a Google seat is wanted.
+- When Codex is out of room (Threadbear's Usage or `list_accounts` shows the Codex login used up, or the seat fails with a usage-limit error), don't wait for the reset or skip the review: send the same brief to Grok (`grok-4.7`, `high`, `LIMIT=3600`). Mike asked for this on 15 Nov 2026 when his Codex week ran out. Grok is still another lab, so the review counts.
+- When Grok is out too (HTTP 402 "usage balance exhausted", as on 16 Nov 2026), send the same brief through OpenCode: `opencode_seat review opencode/gpt-6.1-sol high` with `LIMIT=3600` (or `opencode/grok-4.7` if OpenAI's filter stops it). OpenCode bills Mike's OpenCode Zen balance ($20 on 17 Nov 2026, about $0.04 for the lock tests; its key, "delegate seats (M5)", expires about 15 Feb 2027), and the balance is on [the console](https://opencode.ai/console) in his Default Chrome profile. It's still another lab, so the review counts.
 - When every other lab is out (OpenCode answering 401 or out of balance as well), commit the fix on its branch, but don't land it or call it fixed. Tell Mike, in the thread and with `update_project` if it belongs to one, that it's waiting on a cross-lab review, which lab ran out and when it comes back (Usage shows Codex's reset). Then wait for whichever comes back first. A Claude break-it review (a sub-agent or a Fable seat) is worth running while you wait, but it doesn't stand in for another lab. Don't top up a balance or buy anything: that's Mike's call.
 
 Threadbear's pools already move threads between Claude and Codex logins as they run out of room, so don't delegate just to find room. If you are yourself running as a delegate (your brief says so), do the work yourself.
@@ -35,9 +35,10 @@ If Mike names a model, use that. Always pass the effort.
 | Opus | `claude-opus-5-5` | `opus` | `xhigh`, or `max` for hard problems |
 | Codex | `gpt-6.1-sol` | `gpt-6.1-sol` | `high` |
 | Grok (the pick for current events and X) | `grok-4.7` | not available | `high` |
+| Gemini (`gemini_seat`) | `gemini-4-carbon` (or `gemini-4-argon`, `-hydrogen`, `-neon`) | not available | `high` |
 | Consensus chair | `claude-fable-5-1` | `fable` | `high` |
 
-Muse is gone: Mike cancelled it and its paid model stopped on 13 Nov 2026, so don't add it back unless he resubscribes. These IDs were current on 2 Nov 2026. If one has gone stale, `list_accounts` shows Claude and Codex models, and `grok models` shows Grok's.
+Muse is gone: Mike cancelled it and its paid model stopped on 13 Nov 2026, so don't add it back unless he resubscribes. Gemini runs on a pay-per-use Gemini API key that Convex pays for (since 19 Nov 2026), never a Google AI Pro or Ultra login: Google bars driving its CLI from another agent on those plans and can suspend the account. Mike is happy to use it liberally. Its spend is capped at US$90 a month, about the price of AI Ultra; if reviews start failing because the cap paused the API, tell Mike, as that's his cue to look at Ultra again. These IDs were current on 2 Nov 2026. If one has gone stale, `list_accounts` shows Claude and Codex models, and `grok models` shows Grok's.
 
 A Claude seat on the CLI has no pool, so it names a login: any Claude login but `claude-2` for personal work, whichever has most room in Threadbear's `list_accounts` (its `claude-main` is `main` here). Skip one under 10% or at its limit. Outside Threadbear, `tb accounts` lists the logins without their room: use the one starred `*` if it's a Claude login (Threadbear stars the login with most room, never `claude-2`); if it's Codex, ask Mike which Claude login to use. (Token Stats and `token-stats limits` were retired on 9 Nov 2026; checked 13 Nov 2026.) Go through [seats.zsh](reference/seats.zsh) rather than running `claude` yourself: a plain `claude` in a thread inherits that thread's login.
 
@@ -133,7 +134,7 @@ A child's answer is a report, not proof. Before telling Mike something is done o
 
 ## Consensus
 
-For a decision worth several opinions, send the same neutral question to Codex, Grok and Opus in parallel, hide who said what, and have a fresh Fable chair write up the consensus, the disagreements and the best minority point. Mike is happy to try as many model combinations as possible, so go wide for anything that matters. The recipe, briefs and chair prompt are in [reference/consensus.md](reference/consensus.md).
+For a decision worth several opinions, send the same neutral question to Codex, Gemini, Grok and Opus in parallel, hide who said what, and have a fresh Fable chair write up the consensus, the disagreements and the best minority point. Mike is happy to try as many model combinations as possible, so go wide for anything that matters. The recipe, briefs and chair prompt are in [reference/consensus.md](reference/consensus.md).
 
 ## If something goes wrong
 

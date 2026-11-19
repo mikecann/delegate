@@ -6,7 +6,7 @@ Send one question to a panel from different labs. Each answers alone in a fixed 
 
 Each seat is one line in the run script ([cli.md](cli.md)), using the models and efforts from SKILL.md.
 
-- **Default:** Codex (`gpt-6.1-sol`), Grok (`grok-4.7`) and Opus on a personal Claude account with room, and adding Fable or `gpt-6-astra` as a fourth seat is worth it. Chair: a fresh Fable seat (`claude-fable-5-1`) on a personal Claude account with room.
+- **Default:** Codex (`gpt-6.1-sol`), Gemini (`gemini-4-carbon`), Grok (`grok-4.7`) and Opus on a personal Claude account with room, and adding Fable or `gpt-6-astra` as a fourth seat is worth it. Chair: a fresh Fable seat (`claude-fable-5-1`) on a personal Claude account with room.
 - **Big decisions (wide):** all of those plus extra seats: Fable as well as Opus on the Claude accounts (spread across `claude-main`, `claude-1` and `claude-3` by room), and a second Codex model (`gpt-6-astra`) if you think it adds something. Mike is happy to try as many model combinations as possible, so go wide for anything that matters. The chair is still a separate, fresh seat, even if its account also answered.
 - **Convex folders:** only `claude-2` is allowed, so the panel is Fable, Opus and Sonnet on it (`claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5`), and the chair is a fresh Opus seat on it. If Mike explicitly asks for other labs, follow "The Convex rule" in SKILL.md: Claude seats and the chair stay on `claude-2`, and other labs get only what's public or generalised.
 - Skip any account with under 10% room, as usual. You need at least two answers to compare.
@@ -18,7 +18,7 @@ Each seat is one line in the run script ([cli.md](cli.md)), using the models and
 3. Pick one panellist at random for the devil's-advocate line below, and write each seat's brief to `brief-<seat>.md`. Keep the seats in an array: in zsh, `printf '%s\n' $SEATS` doesn't split a string, so a pick from a string silently comes back as the whole list or nothing.
 
    ```zsh
-   seats=(codex grok opus)
+   seats=(codex gemini grok opus)
    devil=${seats[RANDOM % $#seats + 1]}; echo "$devil"
    ```
 
@@ -30,6 +30,7 @@ Each seat is one line in the run script ([cli.md](cli.md)), using the models and
    source ~/.claude/skills/delegate/reference/seats.zsh
 
    codex_seat  codex gpt-6.1-sol high
+   gemini_seat gemini gemini-4-carbon high
    grok_seat   grok  grok-4.7 high
    claude_seat opus  claude-1 claude-opus-5-5 xhigh
 
@@ -39,7 +40,7 @@ Each seat is one line in the run script ([cli.md](cli.md)), using the models and
 5. When it exits, read each `out-<seat>.md`. Drop failed or empty ones. Shuffle and letter the seats that answered, and keep the key:
 
    ```zsh
-   answered=(codex grok opus)
+   answered=(codex gemini grok opus)
    printf '%s\n' $answered | sort -R | awk '{print substr("ABCDEFGHIJ", NR, 1), $1}' | tee "$RUN/key"
    ```
 

@@ -139,6 +139,27 @@ opencode_seat() {
   ) &
 }
 
+# gemini_seat <name> <model> <effort>
+# Google's models on Mike's own Gemini API key, through OpenCode with opencode_seat's lock.
+# Google's subscriptions (AI Pro, Ultra) can't be used: its FAQ bars driving its `agy` CLI
+# from another agent on a consumer plan, and that can suspend the account (19 Nov 2026).
+# The key is the "Delegate reviews (M5)" key in AI Studio project Gemini Reviews
+# (gen-lang-client-0128847654), billed to the Convex billing account (Convex Ramp card) with
+# prepay and a US$90/month spend cap that pauses the API. model is a Gemini API name such as
+# gemini-4-carbon. The key only reaches OpenCode through the environment, so it's exported
+# for the launch and unset straight after (the seat's background job keeps its copy).
+gemini_seat() {
+  local name=$1 model=$2 effort=$3 key=~/.config/gemini/api-key
+  if [[ ! -s $key ]]; then
+    print -r -- "No Gemini key at $key." > "$RUN/err-$name.log"
+    : > "$RUN/out-$name.md"; echo "$name exit NOKEY" >> "$RUN/status"
+    return 1
+  fi
+  export GOOGLE_GENERATIVE_AI_API_KEY=$(tr -d '\n' < $key)
+  opencode_seat "$name" "google/$model" "$effort"
+  unset GOOGLE_GENERATIVE_AI_API_KEY
+}
+
 # Waits for every seat, then prints how each went. A CLI can exit 0 with no answer, so a
 # seat only counts as ok with a non-empty answer. 124 means it hit LIMIT.
 seats_wait() {

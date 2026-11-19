@@ -1,6 +1,6 @@
 # Agent guidance
 
-This repo is delegate, a skill that tells a main AI session running in Threadbear how to get answers from other AI labs and models, through the `claude`, `codex`, `grok` and `muse` CLIs or Threadbear's `create_thread`, and how to run multi-lab consensus panels. It's mostly instructions: the skill in `skill/`, one small sourced helper (`skill/reference/seats.zsh`) that holds the CLI flags, and `install.sh` / `uninstall.sh`, which link the skill into `~/.claude/skills` and `~/.codex/skills`.
+This repo is delegate, a skill that tells a main AI session running in Threadbear how to get answers from other AI labs and models, through the `claude`, `codex`, `grok` and `opencode` CLIs (OpenCode also carries the Gemini seat) or Threadbear's `create_thread`, and how to run multi-lab consensus panels. It's mostly instructions: the skill in `skill/`, one small sourced helper (`skill/reference/seats.zsh`) that holds the CLI flags, and `install.sh` / `uninstall.sh`, which link the skill into `~/.claude/skills` and `~/.codex/skills`.
 
 It used to be a Bun CLI with hooks, and then ran through T3 Code's `delegate_task`. Both live only in git history now. Mike uses Threadbear now and T3's tools don't exist there, so don't bring them back. Keep the helper small too: it isn't the start of another CLI.
 
