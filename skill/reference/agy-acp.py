@@ -66,10 +66,12 @@ ALLOW = {"read"} | ({"search", "fetch"} if mode == "research" else set())
 # On 20 Nov 2026 one review got its last event straight after a refused command and then
 # nothing for 39 minutes, with the server idle, until it was killed by hand; ten other
 # reviews that day finished in 5 to 9 minutes. The server doesn't stream its thinking, so a
-# healthy turn can be silent for a while too: a 23 KB review that made no tool calls sent
-# nothing for 271 s and then streamed its answer (measured the same day). 600 s leaves over
-# twice that.
-STALL = float(os.environ.get("AGY_STALL") or 600)
+# healthy turn can be silent for a long time too. Measured the same day: a 23 KB review that
+# made no tool calls sent nothing for 271 s, then streamed its answer, and a replay of the
+# hung review (64 KB brief, under taskpolicy -b alongside other seats) went 591 s without an
+# event before its next tool call and then finished normally after 22 minutes. 1200 s is
+# twice that. Below about 1260 s of LIMIT (the default 900, say) it can't fire at all.
+STALL = float(os.environ.get("AGY_STALL") or 1200)
 STALLED = 5
 # agy_seat passes its LIMIT, so a retry that couldn't get a full stall window before
 # timeout(1) ends it isn't started: the seat stops as STALLED rather than 124.
