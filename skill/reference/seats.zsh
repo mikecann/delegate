@@ -232,6 +232,9 @@ _gemini_cost() {
 # own ~/.gemini/antigravity-acp, the login Threadbear's Gemini threads use too (moved there
 # from ~/.delegate/agy-home on 20 Nov 2026). Any MCP tool it has is refused by the lock. model is a
 # value from the session's model list, e.g. gemini-4-neon (agy_models lists them); empty keeps the default.
+# A session that goes quiet (no event from the server for AGY_STALL seconds) is ended and
+# retried once from scratch inside agy-acp.py; a second stall ends the seat as STALLED, and
+# so does a first one when LIMIT has no room for a retry or it's a WRITE job.
 # Pinned to 1.4.5: 1.5.0's session/new never answers on this Mac (19 Nov 2026).
 # Not signed in: agy_login, see cli.md.
 AGY_VERSION=1.4.5
@@ -286,14 +289,17 @@ agy_seat() {
     return 1
   fi
   (
-    _agy_env BROWSER=/usr/bin/false taskpolicy -b timeout ${LIMIT:-900} /usr/bin/python3 -I $_seats_dir/agy-acp.py $bin/agy_acp_server.par \
+    _agy_env BROWSER=/usr/bin/false AGY_LIMIT=${LIMIT:-900} ${AGY_STALL:+AGY_STALL=$AGY_STALL} taskpolicy -b timeout ${LIMIT:-900} /usr/bin/python3 -I $_seats_dir/agy-acp.py $bin/agy_acp_server.par \
       "$DIR" "$RUN/brief-$name.md" "$RUN/out-$name.md" "$model" $mode 2> "$RUN/err-$name.log"
-    echo "$name exit $?" >> "$RUN/status"
+    local code=$?
+    [[ $code == 5 ]] && code=STALLED
+    echo "$name exit $code" >> "$RUN/status"
   ) &
 }
 
 # Waits for every seat, then prints how each went. A CLI can exit 0 with no answer, so a
-# seat only counts as ok with a non-empty answer. 124 means it hit LIMIT. A Gemini API key
+# seat only counts as ok with a non-empty answer. 124 means it hit LIMIT, STALLED that an
+# agy_seat went quiet twice. A Gemini API key
 # over its monthly spend cap answers 403 "Spend cap breached" on every call (19 Nov 2026),
 # which only Mike can lift, so that one is named rather than left in the log.
 seats_wait() {
@@ -302,6 +308,7 @@ seats_wait() {
   while read -r line; do
     name=${line%% *}; code=${line##* }
     if [[ $code == 0 && -s $RUN/out-$name.md ]]; then echo "ok      $name"
+    elif [[ $code == STALLED ]]; then echo "FAILED  $name (stalled: the agent went quiet twice, carry on without it)"
     elif grep -qi 'spend cap breached' "$RUN/err-$name.log" 2>/dev/null; then echo "FAILED  $name (Gemini API spend cap hit, tell Mike; use agy_seat meanwhile)"
     else echo "FAILED  $name (exit $code, see err-$name.log)"; fi
     [[ -s $RUN/cost-$name.txt ]] && echo "        cost $(< $RUN/cost-$name.txt)"

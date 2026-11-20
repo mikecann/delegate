@@ -14,6 +14,7 @@ It used to be a Bun CLI with hooks, and then ran through T3 Code's `delegate_tas
 - Never let a child work in Mike's real tree for a read-only job that needs the code. It gets a worktree.
 - Write jobs never commit or push. The orchestrator reviews the patch and applies it.
 - Keep the Convex rule intact: Convex work only goes to the Convex Claude account (`claude-2`), and that account gets nothing else. The only exception is the one in SKILL.md, where Mike explicitly asks for other labs on that job. Don't widen it without him asking.
+- After changing `agy-acp.py`, run `python3 -m unittest discover -s tests` (about 35 seconds, against a fake ACP server, no Google login needed).
 - Test `install.sh` and `uninstall.sh` with `HOME` pointed at a temp folder, never your real one.
 
 ## Writing

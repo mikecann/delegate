@@ -71,6 +71,7 @@ env -u CLAUDE_CONFIG_DIR claude auth status    # ~/.claude
 ## When it goes wrong
 
 - `FAILED <name> (exit 124)`: it hit `LIMIT`. Split the job or raise the limit.
+- `FAILED <name> (stalled ...)`, status `exit STALLED`: an `agy_seat` got no event from the agent for 10 minutes twice (agy-acp.py retries once from a fresh server first, unless it's a `WRITE` job or `LIMIT` has no room for another 10 minutes, as with the default 900; `err-<name>.log` has a `stalled:` line for each). On 20 Nov 2026 one review went quiet like this after a refused command and sat idle for 39 minutes until it was killed by hand. Carry on without it. `AGY_STALL` (seconds) changes the wait for one script.
 - A seat that exits 0 with an empty answer counts as failed. Look in `err-<name>.log`. Codex's answer is in `out-<name>.md` and everything else it prints is in the log.
 - OpenCode `401 api_key_expired`: its Zen key has run out. Mike makes a new one at opencode.ai/console/account#api-keys (Default Chrome profile, model request and usage read access only) and it goes into `~/.local/share/opencode/auth.json` under `opencode.key`.
 - Gemini `exit NOKEY`: `~/.config/gemini/api-key` is missing. The key is "Delegate reviews (M5)" in [AI Studio](https://aistudio.google.com/apikey) (project Gemini Reviews, Mike's personal Google account). Its copy button puts it on the clipboard only while Chrome is frontmost, and new keys start `AQ.`, not `AIza`.
