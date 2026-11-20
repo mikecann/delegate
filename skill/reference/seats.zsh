@@ -54,13 +54,29 @@ claude_seat() {
 # Read-only doesn't stop connectors either, and -c 'mcp_servers={}' doesn't remove them.
 # --ignore-user-config drops config.toml's servers (the login still works), and the two
 # --disable flags drop the app and plugin ones.
+# A global Codex install can come out with the launcher but no binary: on 20 Nov 2026
+# `npm install -g @openai/codex@latest` ran a second before that release's
+# codex-darwin-arm64 was published, npm skipped the optional package silently, and every
+# seat died at once ("Missing optional dependency"). So check it starts, say how to fix
+# it, and use Threadbear's own copy (checked before it's activated) until it's fixed.
+_codex_bin() {
+  if codex --version >/dev/null 2>&1; then print codex; return; fi
+  local tb="$HOME/Library/Application Support/Threadbear/tools/codex/current/node_modules/.bin/codex"
+  print -u2 "delegate: the codex on PATH ($(command -v codex || echo none)) doesn't start: $(codex --version 2>&1 | grep -m1 -v '^ *at ')"
+  print -u2 "  Fix: npm install -g @openai/codex@latest, then check codex --version."
+  "$tb" --version >/dev/null 2>&1 || return 1
+  print -u2 "  Using Threadbear's copy until then."
+  print -r -- "$tb"
+}
+
 codex_seat() {
-  local name=$1 model=$2 effort=$3 sandbox=read-only
+  local name=$1 model=$2 effort=$3 sandbox=read-only bin
   [[ -n $WRITE ]] && sandbox=workspace-write
+  bin=$(_codex_bin 2>>"$RUN/err-$name.log") || { echo "$name exit NOCODEX" >> "$RUN/status"; return; }
   (
-    taskpolicy -b timeout ${LIMIT:-900} codex exec --ignore-user-config --disable apps --disable plugins \
+    taskpolicy -b timeout ${LIMIT:-900} "$bin" exec --ignore-user-config --disable apps --disable plugins \
       -m "$model" -c "model_reasoning_effort=\"$effort\"" -s $sandbox --skip-git-repo-check \
-      -C "$DIR" -o "$RUN/out-$name.md" - < "$RUN/brief-$name.md" > "$RUN/err-$name.log" 2>&1
+      -C "$DIR" -o "$RUN/out-$name.md" - < "$RUN/brief-$name.md" >> "$RUN/err-$name.log" 2>&1
     echo "$name exit $?" >> "$RUN/status"
   ) &
 }

@@ -48,6 +48,7 @@ Any mix of seats in one script runs in parallel. The script can set `LIMIT` (sec
 - A read-only Codex seat can still run commands, builds included. Nothing turns that off without also stopping it reading files, so the brief tells it not to build or run test suites.
 - Every seat runs at background priority (`taskpolicy -b`), and so does anything it starts, so a child's work stays off the cores Mike is using.
 - Grok's X search tools can't go in its read-only lock. For "what are people saying on X", use `WRITE=1` with `DIR` set to an empty scratch folder.
+- Codex `exit NOCODEX`: neither the global `codex` nor Threadbear's copy starts. If err-<name>.log says the global one is "Missing optional dependency", the install raced a Codex release (its platform package goes up a few minutes after the main one): run `npm install -g @openai/codex@latest` again and check `codex --version`. While only the global one is broken, seats say so in err-<name>.log and use Threadbear's copy.
 - Grok `exit UNLOCKED` means a name in `--tools` wasn't recognised and it ran with every tool. Throw the answer away, check nothing changed in `DIR`, and fix the names in seats.zsh.
 
 ## The Antigravity seat
