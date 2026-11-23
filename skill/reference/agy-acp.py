@@ -10,6 +10,7 @@ and rejects everything else. It also declares no file or terminal access of its 
 python3 -I agy-acp.py <server> <dir> <brief> <out> <model> <mode: ro|research|write>
 python3 -I agy-acp.py <server> login
 python3 -I agy-acp.py <server> models
+python3 -I agy-acp.py <server> usage   (the plan's quota left; the server answers /usage itself, no model turn)
 Tool calls, permission answers and errors go to stderr.
 
 Stall watchdog: if the server sends nothing at all for STALL seconds (AGY_STALL, default
@@ -59,7 +60,8 @@ def read_only_command(cmd):
 server = sys.argv[1]
 login = sys.argv[2:] == ["login"]
 models = sys.argv[2:] == ["models"]
-cwd, brief_path, out_path, model, mode = (sys.argv[2:7] if not (login or models) else [None] * 5)
+usage = sys.argv[2:] == ["usage"]
+cwd, brief_path, out_path, model, mode = (sys.argv[2:7] if not (login or models or usage) else [None] * 5)
 # File reads run without asking. "search" also covers web search, so it's
 # only allowed with web access.
 ALLOW = {"read"} | ({"search", "fetch"} if mode == "research" else set())
@@ -258,6 +260,10 @@ def run(s):
                 print("\n".join(o["value"] for o in opt["options"]))
         return 0
     sid = session["sessionId"]
+    if usage:  # antigravity-acp handles /usage in its own layer: no model call, no quota spent
+        s.request("session/prompt", {"sessionId": sid, "prompt": [{"type": "text", "text": "/usage"}]})
+        print("".join(s.answer).strip())
+        return 0
     if model:
         s.request("session/set_config_option", {"sessionId": sid, "configId": "model", "value": model})
     with open(brief_path) as f:

@@ -115,6 +115,15 @@ class StallTest(unittest.TestCase):
         self.assertEqual(self.out, answer)
         self.assertNotIn("agent execution failed", self.err)
 
+    def test_usage_mode_prints_the_servers_usage_report(self):
+        t = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, t, True)
+        e = dict(os.environ, AGY_STALL="2", FAKE_COUNT=os.path.join(t, "count"), FAKE_PIDS=os.path.join(t, "pids"),
+                 FAKE_PROMPT="answer", FAKE_ANSWER="### Quota Limits\n- Weekly Limit Remaining: 55% remaining")
+        p = subprocess.run([PY, "-I", CLIENT, SERVER, "usage"], env=e, capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(p.stdout.strip(), "### Quota Limits\n- Weekly Limit Remaining: 55% remaining")
+
     def test_seats_wait_rejects_nonempty_harness_failure_output(self):
         run = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, run, True)

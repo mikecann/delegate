@@ -6,7 +6,7 @@ It used to be a Bun CLI with hooks, and then ran through T3 Code's `delegate_tas
 
 ## Rules
 
-- The skill is opt-in. Mike picks the account when he starts a thread, so a thread does its own work there and only delegates when he asks. Don't bring back proactive delegation (the orchestrator pattern) without him asking.
+- The skill is opt-in. Mike picks the account when he starts a thread, so a thread does its own work there and only delegates when he asks. Don't bring back proactive delegation (the orchestrator pattern) without him asking. The two standing exceptions he asked for are cross-lab fix reviews and, since 23 Nov 2026, a Neon second opinion when designing or weighing options (SKILL.md).
 - Finding room on a Claude or Codex login is Threadbear's job, through pools. Mike had the account tables and picking rules cut on 2 Nov 2026, so don't grow them back: this skill is for other labs, panels and read-only jobs.
 - Git snippets in the skill (starting state, worktrees, diff, apply, cleanup, the Convex check) get tested in a throwaway git repo under `$TMPDIR` before they go in, including uncommitted, untracked and binary changes. Point `HOME` at a temp folder if a snippet writes under it, so nothing lands in the real `~/.delegate`.
 - Any change to the flags in `seats.zsh` gets tested by asking the model to write a file, run a shell command and call a connector, then checking the folder. Several flags that look like locks aren't: `--allowedTools` on Claude, plan mode on Grok, `-s read-only` for Codex's connectors. Grok's `--tools` fails open on a name it doesn't know.

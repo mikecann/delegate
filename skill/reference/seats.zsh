@@ -276,6 +276,13 @@ agy_models() {
     ~/.delegate/agy-acp/$AGY_VERSION/agy_acp_server.par models
 }
 
+# agy_usage: how much of Mike's Google plan is left (Gemini models' weekly and 5-hour
+# windows, plus the Claude/GPT group). The server answers /usage itself, so it costs nothing.
+agy_usage() {
+  _agy_env BROWSER=/usr/bin/false timeout 120 /usr/bin/python3 -I $_seats_dir/agy-acp.py \
+    ~/.delegate/agy-acp/$AGY_VERSION/agy_acp_server.par usage
+}
+
 # agy_login: prints a Google sign-in link and waits 5 minutes for it to be used.
 agy_login() {
   agy_install || return 1
