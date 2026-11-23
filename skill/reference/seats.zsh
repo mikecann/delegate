@@ -36,33 +36,39 @@ _seat_clean() { env $(env | awk -F= '/^(CLAUDE|ANTHROPIC)/ {printf "-u %s ", $1}
 # KILL to whatever is left after 3 seconds. The tree is walked again while it waits, as a
 # seat stopped mid-start still goes on to start its timeout. The hooks only go in when
 # sourced by a script, so an interactive shell that sources this for agy_login doesn't exit
-# on Ctrl-C. Source it at the top of the script: from a function it still cleans up at exit,
-# but not on ERR_EXIT.
+# on Ctrl-C. Anything else the script started goes too.
 zmodload -F zsh/system p:sysparams
+zmodload -F zsh/datetime p:EPOCHREALTIME
 _seats_pid=$sysparams[pid]  # not $$, which stays the parent's pid inside ( )
 _seats_stop() {
   emulate -L zsh  # whatever the script set, ERR_EXIT included, doesn't apply in here
   (( sysparams[pid] == _seats_pid )) || return 0  # not in a seat's subshell
-  local all=() kids new i
-  for i in {1..30}; do
+  local all=() kids new end=$(( EPOCHREALTIME + 3 ))
+  while true; do
     kids=($(pgrep -P $_seats_pid)) new=()
     while (( $#kids )); do new+=($kids); kids=($(pgrep -P ${(j:,:)kids})); done
     new=(${new:|all})
-    (( $#new )) && kill -TERM $new 2>/dev/null
     all+=($new)
     (( $#all )) || return 0
+    (( $#new )) && kill -TERM $new 2>/dev/null
     ps -o stat= -p ${(j:,:)all} 2>/dev/null | grep -qv '^ *Z' || return 0
-    sleep 0.1
+    # by the clock, not a count: on a loaded Mac each pass can take a second
+    (( EPOCHREALTIME < end )) || break
+    sleep 0.2
   done
   kill -KILL $all 2>/dev/null
   return 0
 }
 if [[ ! -o interactive ]]; then
   # zshexit runs at exit even if the script sets its own EXIT trap or sourced this from a
-  # function, where an EXIT trap would fire as the function returns. The EXIT trap is for
-  # ERR_EXIT, which skips zshexit.
+  # function, where an EXIT trap would fire as the function returns. ERR_EXIT skips zshexit,
+  # so that exit gets the EXIT trap, or from a function ZERR, which fires where it would.
   zshexit_functions=(${zshexit_functions:#_seats_stop} _seats_stop)
-  [[ $zsh_eval_context == *shfunc* ]] || trap _seats_stop EXIT
+  if [[ $zsh_eval_context == *shfunc* ]]; then
+    trap '[[ -o err_exit ]] && _seats_stop' ZERR
+  else
+    trap _seats_stop EXIT
+  fi
   trap '_seats_stop; exit 129' HUP
   trap '_seats_stop; exit 130' INT
   trap '_seats_stop; exit 143' TERM

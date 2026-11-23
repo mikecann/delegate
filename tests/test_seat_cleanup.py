@@ -175,6 +175,10 @@ class ScriptShapesTest(unittest.TestCase):
         self.assertEqual(p.stdout, "alive\n")
         self.assertEqual(self.left(), [])
 
+    def test_err_exit_when_sourced_from_a_function(self):
+        self.run_script('setopt err_exit; s=$1; setup() { source $s; }; setup; SEAT; sleep 0.5; false')
+        self.assertEqual(self.left(), [])
+
     def test_seat_stopped_before_it_starts_timeout(self):
         self.run_script('source "$1"; ( trap : TERM INT HUP; sleep 1; SEAT wait ) & sleep 0.3; kill -TERM $$')
         self.assertEqual(self.left(), [])
