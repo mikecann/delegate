@@ -12,10 +12,12 @@ python3 -I agy-acp.py <server> login
 python3 -I agy-acp.py <server> models
 Tool calls, permission answers and errors go to stderr.
 
-Stall watchdog: if the server sends nothing at all for STALL seconds (AGY_STALL, default
-below) while a request is open, the session is ended and the whole job retried once from
-a fresh server. A second stall exits 5, which seats.zsh records as STALLED. login prints Google's sign-in
-link (run the server with BROWSER="/bin/echo %s") and waits up to 5 minutes for it.
+Stall watchdog: if the server sends nothing at all while a request is open, for INIT_STALL
+seconds during the handshake (initialize, session/new, set_config_option; AGY_INIT_STALL,
+default 120) or STALL seconds once the prompt is sent (AGY_STALL, default 1200), the session
+is ended and the whole job retried once from a fresh server. A second stall exits 5, which
+seats.zsh records as STALLED. login prints Google's sign-in link (run the server with
+BROWSER="/bin/echo %s") and waits for it with no stall watch.
 """
 
 import json
@@ -72,9 +74,13 @@ ALLOW = {"read"} | ({"search", "fetch"} if mode == "research" else set())
 # event before its next tool call and then finished normally after 22 minutes. 1200 s is
 # twice that. Below about 1260 s of LIMIT (the default 900, say) it can't fire at all.
 STALL = float(os.environ.get("AGY_STALL") or 1200)
+# The handshake before the prompt should answer in seconds. On 23 Nov 2026 reviews sat
+# 1229 s in initialize before the prompt-sized window fired, then waited it out again on the
+# retry: 40 minutes before the caller could fall back to gemini_seat.
+INIT_STALL = float(os.environ.get("AGY_INIT_STALL") or min(120, STALL))
 STALLED = 5
-# agy_seat passes its LIMIT, so a retry that couldn't get a full stall window before
-# timeout(1) ends it isn't started: the seat stops as STALLED rather than 124.
+# agy_seat passes its LIMIT, so a retry that couldn't get a full stall window (of the phase
+# that stalled) before timeout(1) ends it isn't started: the seat stops as STALLED, not 124.
 LIMIT = float(os.environ.get("AGY_LIMIT") or 0)
 START = time.monotonic()
 sessions = []  # every server started, so cleanup finds them even mid-construction
@@ -85,7 +91,9 @@ def log(msg):
 
 
 class Stalled(Exception):
-    pass
+    def __init__(self, msg, window):
+        super().__init__(msg)
+        self.window = window  # the stall window of the phase that stalled
 
 
 class Session:
@@ -140,7 +148,8 @@ class Session:
         except (OSError, ValueError):  # the server is gone; the reader ends the wait
             pass
 
-    def request(self, method, params, watch=True):
+    def request(self, method, params, watch=INIT_STALL):
+        """watch is the stall window in seconds, or None for no watch."""
         self.next_id += 1
         rid = self.next_id
         done = threading.Event()
@@ -155,8 +164,8 @@ class Session:
                          args=({"jsonrpc": "2.0", "id": rid, "method": method, "params": params},)).start()
         while not done.wait(1):
             quiet = time.monotonic() - self.last_event
-            if watch and quiet > STALL:
-                raise Stalled(f"no event from the agent for {quiet:.0f}s during {method}")
+            if watch and quiet > watch:
+                raise Stalled(f"no event from the agent for {quiet:.0f}s during {method}", watch)
         msg = self.waiting.pop(rid)[1]
         if msg is None:
             raise SystemExit(f"agent exited during {method}")
@@ -246,7 +255,7 @@ def run(s):
                              "clientCapabilities": {"fs": {"readTextFile": False, "writeTextFile": False},
                                                     "terminal": False}})
     if login:  # waits on a person, so no stall watch
-        r = s.request("authenticate", {"methodId": "oauth-personal"}, watch=False)
+        r = s.request("authenticate", {"methodId": "oauth-personal"}, watch=None)
         log("signed in, plan: " + json.dumps(r.get("_meta", {}).get("antigravity", {}).get("tier", {}).get("name")))
         return 0
     session = s.request("session/new", {"cwd": s.home, "mcpServers": [],
@@ -260,7 +269,8 @@ def run(s):
     if model:
         s.request("session/set_config_option", {"sessionId": sid, "configId": "model", "value": model})
     with open(brief_path) as f:
-        result = s.request("session/prompt", {"sessionId": sid, "prompt": [{"type": "text", "text": f.read()}]})
+        result = s.request("session/prompt", {"sessionId": sid, "prompt": [{"type": "text", "text": f.read()}]},
+                           watch=STALL)
     log(f"stop: {result.get('stopReason')}")
     code = 0 if result.get("stopReason") == "end_turn" else 3
     # Quota and capacity errors come back as the whole answer, not as an error.
@@ -286,7 +296,7 @@ try:
             if attempt == 2 or mode == "write":
                 log(f"stalled{' again' if attempt == 2 else ''}: {e}. Giving up (exit {STALLED}, STALLED).")
                 break
-            if LIMIT and LIMIT - (time.monotonic() - START) < STALL + 60:
+            if LIMIT and LIMIT - (time.monotonic() - START) < e.window + 60:
                 log(f"stalled: {e}. Not enough of LIMIT left for a retry. Giving up (exit {STALLED}, STALLED).")
                 break
             log(f"stalled: {e}. Retrying once from a fresh server.")

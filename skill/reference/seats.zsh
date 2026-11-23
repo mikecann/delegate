@@ -232,8 +232,8 @@ _gemini_cost() {
 # own ~/.gemini/antigravity-acp, the login Threadbear's Gemini threads use too (moved there
 # from ~/.delegate/agy-home on 20 Nov 2026). Any MCP tool it has is refused by the lock. model is a
 # value from the session's model list, e.g. gemini-4-neon (agy_models lists them); empty keeps the default.
-# A session that goes quiet (no event from the server for AGY_STALL seconds) is ended and
-# retried once from scratch inside agy-acp.py; a second stall ends the seat as STALLED, and
+# A session that goes quiet (no event from the server for AGY_INIT_STALL seconds during the
+# handshake, AGY_STALL once the prompt is sent) is ended and retried once from scratch inside agy-acp.py; a second stall ends the seat as STALLED, and
 # so does a first one when LIMIT has no room for a retry or it's a WRITE job.
 # Pinned to 1.4.5: 1.5.0's session/new never answers on this Mac (19 Nov 2026).
 # Not signed in: agy_login, see cli.md.
@@ -289,7 +289,7 @@ agy_seat() {
     return 1
   fi
   (
-    _agy_env BROWSER=/usr/bin/false AGY_LIMIT=${LIMIT:-900} ${AGY_STALL:+AGY_STALL=$AGY_STALL} taskpolicy -b timeout ${LIMIT:-900} /usr/bin/python3 -I $_seats_dir/agy-acp.py $bin/agy_acp_server.par \
+    _agy_env BROWSER=/usr/bin/false AGY_LIMIT=${LIMIT:-900} ${AGY_STALL:+AGY_STALL=$AGY_STALL} ${AGY_INIT_STALL:+AGY_INIT_STALL=$AGY_INIT_STALL} taskpolicy -b timeout ${LIMIT:-900} /usr/bin/python3 -I $_seats_dir/agy-acp.py $bin/agy_acp_server.par \
       "$DIR" "$RUN/brief-$name.md" "$RUN/out-$name.md" "$model" $mode 2> "$RUN/err-$name.log"
     local code=$?
     [[ $code == 5 ]] && code=STALLED

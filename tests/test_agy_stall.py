@@ -85,6 +85,26 @@ class StallTest(unittest.TestCase):
         self.assertIn("Not enough of LIMIT", self.err)
         self.assertEqual(self.servers_started(), 1)
 
+    def test_handshake_has_its_own_short_window(self):
+        self.assertEqual(self.run_client(FAKE_PROMPT="mute", AGY_STALL="30", AGY_INIT_STALL="1"), 5, self.err)
+        self.assertIn("during initialize. Retrying once", self.err)
+        self.assertIn("stalled again", self.err)
+        self.assertEqual(self.servers_started(), 2)
+        self.assertLess(self.elapsed, 15)
+        self.assertEqual(self.left_running(), [])
+
+    def test_session_new_stall_uses_the_handshake_window(self):
+        self.assertEqual(self.run_client(FAKE_PROMPT="nosession", AGY_STALL="30", AGY_INIT_STALL="1"), 5, self.err)
+        self.assertIn("during session/new", self.err)
+        self.assertLess(self.elapsed, 15)
+
+    def test_handshake_retry_only_needs_room_for_its_window(self):
+        # 90 s of LIMIT has no room for another 100 s prompt window (plus 60), but has for a 1 s handshake one.
+        self.assertEqual(self.run_client(FAKE_FIRST="mute", FAKE_PROMPT="answer", AGY_STALL="100",
+                                         AGY_INIT_STALL="1", AGY_LIMIT="90"), 0, self.err)
+        self.assertIn("Retrying once", self.err)
+        self.assertEqual(self.out, "answer from server 2")
+
     def test_other_failure_after_a_stall_is_not_called_a_stall(self):
         self.assertEqual(self.run_client(FAKE_FIRST="quiet", FAKE_PROMPT="error"), 1, self.err)
         self.assertIn("session/prompt failed", self.err)

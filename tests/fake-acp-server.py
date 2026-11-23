@@ -9,6 +9,8 @@ FAKE_PROMPT says what it does:
   chatty   send an update every second for FAKE_SECONDS, then answer
   error    answer session/prompt with a JSON-RPC error
   partial  send part of an answer, then nothing again
+  mute     never answer initialize (the 23 Nov 2026 handshake hang)
+  nosession  answer initialize, never answer session/new
 FAKE_FIRST overrides FAKE_PROMPT for the first server started (counted in FAKE_COUNT).
 Every server and child writes its pid to FAKE_PIDS.
 """
@@ -44,6 +46,8 @@ if behaviour == "child":
 for line in sys.stdin:
     msg = json.loads(line)
     method, rid = msg.get("method"), msg.get("id")
+    if behaviour == "mute" or (behaviour == "nosession" and method == "session/new"):
+        continue
     if method == "initialize":
         send({"jsonrpc": "2.0", "id": rid, "result": {"protocolVersion": 1}})
     elif method == "session/new":
