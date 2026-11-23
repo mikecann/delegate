@@ -84,6 +84,8 @@ STALLED = 5
 LIMIT = float(os.environ.get("AGY_LIMIT") or 0)
 START = time.monotonic()
 sessions = []  # every server started, so cleanup finds them even mid-construction
+STOP_SIGNALS = {signal.SIGTERM, signal.SIGINT, signal.SIGHUP}
+stop_state = {"starting": False, "code": None}
 
 
 def log(msg):
@@ -107,15 +109,19 @@ class Session:
         # an empty folder of its own and the job's folder goes in as an additional directory.
         self.home = tempfile.mkdtemp(prefix="agy-cwd-")
         # Its own process group, so close() also ends localharness_external and any tool it runs.
-        # SIGTERM waits until the handle is stored, so cleanup can always find the server.
-        signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+        # A stop signal waits until the handle is stored, so cleanup can always find the server.
+        # Not by blocking signals: the server inherited the block, and a plain kill of it
+        # (or of timeout, which passes it on) did nothing until 23 Nov 2026.
+        stop_state["starting"] = True
         try:
             self.proc = subprocess.Popen([server], cwd=self.home, stdin=subprocess.PIPE,
                                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
                                          bufsize=1, encoding="utf-8", errors="replace",
                                          start_new_session=True)
         finally:
-            signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
+            stop_state["starting"] = False
+        if stop_state["code"] is not None:
+            sys.exit(stop_state["code"])
         self.lock = threading.Lock()
         self.next_id = 0
         self.waiting = {}
@@ -281,9 +287,27 @@ def run(s):
     return code
 
 
-# timeout(1) ends a seat at LIMIT with SIGTERM: exit through finally so the answer so
-# far is saved and the server and temp folder are cleaned up.
-signal.signal(signal.SIGTERM, lambda *_: sys.exit(124))
+def stop(sig, _frame):
+    """timeout(1) ends a seat at LIMIT with SIGTERM, and seats.zsh sends one when the run
+    script is stopped. The servers run in sessions of their own, out of reach of timeout's
+    signal to its group, so kill them here first, then exit through finally so the answer so
+    far is saved and the temp folders go. Later signals are ignored, so they can't cut that
+    cleanup short."""
+    for s in STOP_SIGNALS:
+        signal.signal(s, signal.SIG_IGN)
+    for sess in sessions:
+        if sess.proc and sess.proc.returncode is None:
+            try:
+                os.killpg(sess.proc.pid, signal.SIGKILL)
+            except OSError:
+                pass
+    stop_state["code"] = 124 if sig == signal.SIGTERM else 128 + sig
+    if not stop_state["starting"]:  # else Session() exits once the new server's handle is stored
+        sys.exit(stop_state["code"])
+
+
+for sig in STOP_SIGNALS:
+    signal.signal(sig, stop)
 code = 1
 try:
     for attempt in (1, 2):
@@ -308,7 +332,8 @@ except SystemExit as e:
         log(str(e))
         code = 1
 finally:
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)  # don't let a late SIGTERM skip cleanup
+    for sig in STOP_SIGNALS:  # don't let a late signal skip cleanup
+        signal.signal(sig, signal.SIG_IGN)
     try:
         for sess in sessions:  # first, so no reader is still adding to the answer
             sess.close()

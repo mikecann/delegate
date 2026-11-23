@@ -16,12 +16,45 @@
 # and whatever it spawns inherits that. A Codex reviewer ran xcodebuild in its worktree on
 # 5 Nov 2026 and loaded Mike's M5 for ten minutes at full priority. Logins still work under
 # it: Codex's ChatGPT login and Claude's keychain login were both tested that day.
+#
+# When the script ends or gets TERM, INT or HUP, every seat it started stops too, with
+# everything under it (see _seats_stop). Sourcing this sets those traps in a script, so set
+# your own after the source line only if you call _seats_stop from them.
 
 # A thread's environment carries its own login and session (CLAUDE_CONFIG_DIR,
 # CLAUDE_EFFORT and more), so a child claude would bill the thread's account without this.
 # Don't use env -i: wiping everything breaks Codex's ChatGPT login.
 _seats_dir=${${(%):-%x}:A:h}
 _seat_clean() { env $(env | awk -F= '/^(CLAUDE|ANTHROPIC)/ {printf "-u %s ", $1}') "$@"; }
+
+# On 23 Nov 2026 a run script stopped from outside (Claude Code's TaskStop signals the
+# script's process group) left its agy seat running for an hour under launchd, server and
+# all: timeout(1) puts itself in a process group of its own, so a signal to the script's
+# group never reaches it, and the seat's subshell died with the script. So each seat's
+# subshell outlives a signal (trap : below), and when the script ends or is signalled this
+# sends TERM to every process under it (the seats save what they have and clean up), then
+# KILL to whatever is left after 3 seconds. The traps only go in when sourced by a script,
+# so an interactive shell that sources this for agy_login doesn't exit on Ctrl-C.
+_seats_level=$ZSH_SUBSHELL
+_seats_stop() {
+  (( ZSH_SUBSHELL == _seats_level )) || return 0
+  local kids=($(pgrep -P $$)) all=() i
+  while (( $#kids )); do all+=($kids); kids=($(pgrep -P ${(j:,:)kids})); done
+  (( $#all )) || return 0
+  kill -TERM $all 2>/dev/null
+  for i in {1..30}; do
+    ps -o stat= -p ${(j:,:)all} 2>/dev/null | grep -qv '^ *Z' || return 0
+    sleep 0.1
+  done
+  kill -KILL $all 2>/dev/null
+  return 0
+}
+if [[ ! -o interactive ]]; then
+  trap _seats_stop EXIT
+  trap '_seats_stop; exit 129' HUP
+  trap '_seats_stop; exit 130' INT
+  trap '_seats_stop; exit 143' TERM
+fi
 
 # claude_seat <name> <account> <model> <effort>
 # account: a login folder name (claude-1, claude-2, claude-3, claude-4), or "main" for
@@ -38,6 +71,7 @@ claude_seat() {
     lock=(--tools "Read,Glob,Grep${RESEARCH:+,WebSearch,WebFetch}")
   fi
   (
+    trap : TERM INT HUP
     cd "$DIR" && _seat_clean $cfg taskpolicy -b timeout ${LIMIT:-900} claude -p --model "$model" --effort "$effort" \
       $lock --strict-mcp-config --no-session-persistence \
       < "$RUN/brief-$name.md" > "$RUN/out-$name.md" 2> "$RUN/err-$name.log"
@@ -74,6 +108,7 @@ codex_seat() {
   [[ -n $WRITE ]] && sandbox=workspace-write
   bin=$(_codex_bin 2>>"$RUN/err-$name.log") || { echo "$name exit NOCODEX" >> "$RUN/status"; return; }
   (
+    trap : TERM INT HUP
     taskpolicy -b timeout ${LIMIT:-900} "$bin" exec --ignore-user-config --disable apps --disable plugins \
       -m "$model" -c "model_reasoning_effort=\"$effort\"" -s $sandbox --skip-git-repo-check \
       -C "$DIR" -o "$RUN/out-$name.md" - < "$RUN/brief-$name.md" >> "$RUN/err-$name.log" 2>&1
@@ -92,6 +127,7 @@ grok_seat() {
     lock=(--tools "read_file,grep,list_dir${RESEARCH:+,web_search,web_fetch}" --disallowed-tools use_tool,search_tool)
   fi
   (
+    trap : TERM INT HUP
     taskpolicy -b timeout ${LIMIT:-900} grok --prompt-file "$RUN/brief-$name.md" -m "$model" --effort "$effort" $lock \
       --cwd "$DIR" > "$RUN/out-$name.md" 2> "$RUN/err-$name.log" < /dev/null
     local code=$?
@@ -146,6 +182,7 @@ opencode_seat() {
     done
   fi
   (
+    trap : TERM INT HUP
     local empty; empty=$(mktemp -d "${TMPDIR:-/tmp}/delegate-opencode-config.XXXXXX") || exit 1
     cd "$DIR" && env OPENCODE_PURE=1 OPENCODE_DISABLE_PROJECT_CONFIG=1 OPENCODE_CONFIG_PROJECT_DISABLE=1 OPENCODE_CONFIG_DIR="$empty" OPENCODE_CONFIG= \
       OPENCODE_DISABLE_CLAUDE_CODE=1 OPENCODE_CONFIG_CONTENT="$cfg" \
@@ -179,6 +216,7 @@ gemini_seat() {
     return 1
   fi
   (
+    trap : TERM INT HUP
     local portf=$RUN/.wait-port-$name i
     rm -f "$portf"
     /usr/bin/python3 -I $_seats_dir/gemini-wait.py "$portf" "$RUN/wait-$name.log" &
@@ -193,7 +231,11 @@ gemini_seat() {
     export GOOGLE_GENERATIVE_AI_API_KEY=$(tr -d '\n' < $key)
     _oc_provider="{\"google\":{\"options\":{\"baseURL\":\"http://127.0.0.1:$(< $portf)/v1beta\"}}}"
     local since=$(( $(date +%s) * 1000 ))
-    opencode_seat "$name" "google/$model" "$effort" && wait $!
+    # wait returns early when a trap fires, so wait until the seat itself is gone
+    if opencode_seat "$name" "google/$model" "$effort"; then
+      local seat=$!
+      while kill -0 $seat 2>/dev/null; do wait $seat; done
+    fi
     kill $proxy 2>/dev/null; rm -f "$portf"
     _gemini_cost "$name" $since
   ) &
@@ -289,6 +331,7 @@ agy_seat() {
     return 1
   fi
   (
+    trap : TERM INT HUP
     _agy_env BROWSER=/usr/bin/false AGY_LIMIT=${LIMIT:-900} ${AGY_STALL:+AGY_STALL=$AGY_STALL} ${AGY_INIT_STALL:+AGY_INIT_STALL=$AGY_INIT_STALL} taskpolicy -b timeout ${LIMIT:-900} /usr/bin/python3 -I $_seats_dir/agy-acp.py $bin/agy_acp_server.par \
       "$DIR" "$RUN/brief-$name.md" "$RUN/out-$name.md" "$model" $mode 2> "$RUN/err-$name.log"
     local code=$?
