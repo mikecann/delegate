@@ -33,16 +33,24 @@ _seat_clean() { env $(env | awk -F= '/^(CLAUDE|ANTHROPIC)/ {printf "-u %s ", $1}
 # group never reaches it, and the seat's subshell died with the script. So each seat's
 # subshell outlives a signal (trap : below), and when the script ends or is signalled this
 # sends TERM to every process under it (the seats save what they have and clean up), then
-# KILL to whatever is left after 3 seconds. The traps only go in when sourced by a script,
-# so an interactive shell that sources this for agy_login doesn't exit on Ctrl-C.
-_seats_level=$ZSH_SUBSHELL
+# KILL to whatever is left after 3 seconds. The tree is walked again while it waits, as a
+# seat stopped mid-start still goes on to start its timeout. The hooks only go in when
+# sourced by a script, so an interactive shell that sources this for agy_login doesn't exit
+# on Ctrl-C. Source it at the top of the script: from a function it still cleans up at exit,
+# but not on ERR_EXIT.
+zmodload -F zsh/system p:sysparams
+_seats_pid=$sysparams[pid]  # not $$, which stays the parent's pid inside ( )
 _seats_stop() {
-  (( ZSH_SUBSHELL == _seats_level )) || return 0
-  local kids=($(pgrep -P $$)) all=() i
-  while (( $#kids )); do all+=($kids); kids=($(pgrep -P ${(j:,:)kids})); done
-  (( $#all )) || return 0
-  kill -TERM $all 2>/dev/null
+  emulate -L zsh  # whatever the script set, ERR_EXIT included, doesn't apply in here
+  (( sysparams[pid] == _seats_pid )) || return 0  # not in a seat's subshell
+  local all=() kids new i
   for i in {1..30}; do
+    kids=($(pgrep -P $_seats_pid)) new=()
+    while (( $#kids )); do new+=($kids); kids=($(pgrep -P ${(j:,:)kids})); done
+    new=(${new:|all})
+    (( $#new )) && kill -TERM $new 2>/dev/null
+    all+=($new)
+    (( $#all )) || return 0
     ps -o stat= -p ${(j:,:)all} 2>/dev/null | grep -qv '^ *Z' || return 0
     sleep 0.1
   done
@@ -50,7 +58,11 @@ _seats_stop() {
   return 0
 }
 if [[ ! -o interactive ]]; then
-  trap _seats_stop EXIT
+  # zshexit runs at exit even if the script sets its own EXIT trap or sourced this from a
+  # function, where an EXIT trap would fire as the function returns. The EXIT trap is for
+  # ERR_EXIT, which skips zshexit.
+  zshexit_functions=(${zshexit_functions:#_seats_stop} _seats_stop)
+  [[ $zsh_eval_context == *shfunc* ]] || trap _seats_stop EXIT
   trap '_seats_stop; exit 129' HUP
   trap '_seats_stop; exit 130' INT
   trap '_seats_stop; exit 143' TERM

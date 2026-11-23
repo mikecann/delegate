@@ -150,6 +150,42 @@ class SeatCleanupTest(unittest.TestCase):
             self.assertIn(f"ok      {name}\n", out)
 
 
+class ScriptShapesTest(unittest.TestCase):
+    """The cleanup holds however the run script is written. SEAT stands in for a seat: a
+    subshell like the real ones, running timeout and a sleep of a length unique to the test."""
+
+    def run_script(self, body):
+        n = self.n = f"{os.getpid() % 1000}.{time.monotonic_ns() % 10**6:06d}"
+        self.addCleanup(subprocess.run, ["pkill", "-9", "-f", f"sleep {n}"])
+        body = body.replace("SEAT", f"( trap : TERM INT HUP; timeout 100 sleep {n} ) &")
+        return subprocess.run(["zsh", "-c", body, "zsh", SEATS, n], capture_output=True, text=True, timeout=60)
+
+    def left(self, n=None):
+        time.sleep(0.5)
+        return subprocess.run(["pgrep", "-f", f"sleep {n or self.n}"], capture_output=True, text=True).stdout.split()
+
+    def test_err_exit(self):
+        self.run_script('setopt err_exit; source "$1"; SEAT; sleep 0.5; false')
+        self.assertEqual(self.left(), [])
+
+    def test_sourced_from_a_function(self):
+        # the seat outlives the function's return, and still stops with the script
+        p = self.run_script('s=$1; setup() { source $s; }; setup; SEAT; sleep 1; '
+                            'pgrep -f "sleep $2" >/dev/null && echo alive; kill -TERM $$')
+        self.assertEqual(p.stdout, "alive\n")
+        self.assertEqual(self.left(), [])
+
+    def test_seat_stopped_before_it_starts_timeout(self):
+        self.run_script('source "$1"; ( trap : TERM INT HUP; sleep 1; SEAT wait ) & sleep 0.3; kill -TERM $$')
+        self.assertEqual(self.left(), [])
+
+    def test_sourced_in_a_subshell_leaves_the_parents_children_alone(self):
+        p = self.run_script('sleep 9"$2" & ( source "$1"; SEAT; sleep 0.5 ); sleep 0.5; '
+                            'pgrep -f "sleep 9$2" >/dev/null || exit 3; kill %1')
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(self.left(), [])
+
+
 class AgyClientSignalTest(unittest.TestCase):
     """agy-acp.py ends its server (in a session of its own) on any stop signal, keeps the answer
     so far, and a second signal can't cut that short."""
