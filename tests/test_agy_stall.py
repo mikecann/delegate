@@ -115,6 +115,15 @@ class StallTest(unittest.TestCase):
         self.assertEqual(self.out, "half an answer")
         self.assertEqual(self.left_running(), [])
 
+    def test_usage_mode_prints_the_servers_usage_report(self):
+        t = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, t, True)
+        e = dict(os.environ, AGY_STALL="2", FAKE_COUNT=os.path.join(t, "count"), FAKE_PIDS=os.path.join(t, "pids"),
+                 FAKE_PROMPT="answer")
+        p = subprocess.run([PY, "-I", CLIENT, SERVER, "usage"], env=e, capture_output=True, text=True, timeout=60)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(p.stdout.strip(), "answer from server 1")
+
     def test_seats_wait_names_a_stall(self):
         run = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, run, True)
