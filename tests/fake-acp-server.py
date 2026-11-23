@@ -58,6 +58,29 @@ for line in sys.stdin:
     elif method == "session/set_config_option":
         send({"jsonrpc": "2.0", "id": rid, "result": {}})
     elif method == "session/prompt":
+        if behaviour == "diagnostics":
+            update({"sessionUpdate": "tool_call", "toolCallId": "read-missing", "kind": "read",
+                    "title": "Running view_file", "status": "in_progress",
+                    "rawInput": {"AbsolutePath": "/workspace/NotARealFile.swift"}})
+            update({"sessionUpdate": "tool_call_update", "toolCallId": "read-missing", "status": "failed",
+                    "content": [{"type": "content", "content": {"type": "text",
+                    "text": "Cannot view file /workspace/NotARealFile.swift which does not exist."}}]})
+            update({"sessionUpdate": "tool_call", "toolCallId": "read-symlink", "kind": "read",
+                    "title": "Running view_file", "status": "failed",
+                    "locations": [{"path": "/workspace/node_modules/dependency/index.js"}],
+                    "rawOutput": {"error": "Access to path is denied. It is outside the allowed workspace directories."}})
+            for status in ("completed", "failed"):
+                update({"sessionUpdate": "tool_call", "toolCallId": status, "kind": "read",
+                        "title": "Running view_file", "status": status,
+                        "content": [{"type": "content", "content": {"type": "text",
+                        "text": "synthetic-secret-file-body-that-must-not-be-logged"}}]})
+            update({"sessionUpdate": "tool_call", "toolCallId": "read-null", "kind": "read",
+                    "title": "Running view_file", "status": "failed", "locations": None, "content": None})
+            prompt = msg["params"]["prompt"][0]["text"]
+            answer = "read guidance supplied" if "one plain ls or grep command" in prompt else "no read guidance"
+            update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": answer}})
+            send({"jsonrpc": "2.0", "id": rid, "result": {"stopReason": "end_turn"}})
+            continue
         if behaviour == "partial":
             update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "half an answer"}})
             while True:

@@ -41,6 +41,56 @@ import time
 # (`{-exec,touch}` expands to -exec, Codex review 19 Nov 2026), no rg (--pre), no sort (-o).
 READ_COMMANDS = {"grep", "egrep", "fgrep", "ls", "cat", "head", "tail", "wc", "stat"}
 
+READ_GUIDANCE = """Read-only tool guidance from the client:
+- File reads are allowed. To discover real filenames, use one plain ls or grep command;
+  cat, head, tail, wc and stat are also allowed. Do not guess a series of filenames.
+- No command chains, pipes, redirects, shell substitutions or other commands are allowed.
+- A symlink may resolve outside the workspace and be refused by the server. If a source
+  is unavailable, use the supplied code or report the limitation instead of retrying it.
+"""
+
+
+def tool_paths(update):
+    """Only explicit file locations, never prompts, commands or returned file bodies."""
+    locations = update.get("locations") or []
+    paths = [p.get("path") for p in locations if isinstance(p, dict)] if isinstance(locations, list) else []
+    raw = update.get("rawInput") or {}
+    if isinstance(raw, dict):
+        paths += [raw.get(k) for k in ("AbsolutePath", "TargetFile", "path", "filePath", "file_path")]
+    return list(dict.fromkeys(p[:600] for p in paths if isinstance(p, str) and p.startswith(("/", "file:///"))))[:3]
+
+
+def tool_failure_reason(update):
+    """Classify error text without copying arbitrary tool output into the log."""
+    texts = []
+    raw = update.get("rawOutput") or {}
+    if isinstance(raw, dict):
+        for key in ("error", "message", "errorMessage"):
+            value = raw.get(key)
+            if isinstance(value, str):
+                texts.append(value)
+            elif isinstance(value, dict) and isinstance(value.get("message"), str):
+                texts.append(value["message"])
+    elif isinstance(raw, str):
+        texts.append(raw)
+    for block in update.get("content") or []:
+        if isinstance(block, dict):
+            content = block.get("content", block)
+            if isinstance(content, dict) and content.get("type") == "text":
+                texts.append(content.get("text", ""))
+    text = "\n".join(t[:8000] for t in texts if isinstance(t, str)).lower()
+    if "outside the allowed workspace" in text or "outside the workspace" in text:
+        return "path resolves outside the workspace (check symlinks)"
+    if any(s in text for s in ("does not exist", "no such file", "file not found")):
+        return "path does not exist (discover filenames with ls/grep)"
+    if any(s in text for s in ("denied by user", "denied by pre-tool hook", "permission denied", "access to path")):
+        return "denied by the permission policy"
+    if "is a directory" in text:
+        return "requested path is a directory"
+    if any(s in text for s in ("out of range", "invalid line", "endline", "startline")):
+        return "requested line range is invalid"
+    return "unrecognized error (tool output omitted)"
+
 
 def read_only_command(cmd):
     if not isinstance(cmd, str) or re.search(r"[$`\\\n\r!]", cmd):
@@ -106,6 +156,7 @@ class Session:
     def __init__(self):
         self.proc = self.home = self.reader_thread = None
         self.answer = []
+        self.tool_calls = {}
         sessions.append(self)
         # The server writes a skills/ folder into its session cwd, so the session runs from
         # an empty folder of its own and the job's folder goes in as an additional directory.
@@ -228,10 +279,17 @@ class Session:
             kind = u.get("sessionUpdate")
             if kind == "agent_message_chunk" and u.get("content", {}).get("type") == "text":
                 self.answer.append(u["content"]["text"])
-            elif kind == "tool_call":
-                log(f"tool: {u.get('kind')} {u.get('title')!r} {u.get('status') or ''}")
-            elif kind == "tool_call_update" and u.get("status") in ("failed",):
-                log(f"tool failed: {u.get('toolCallId')}")
+            elif kind in ("tool_call", "tool_call_update"):
+                call_id = u.get("toolCallId")
+                call = self.tool_calls.setdefault(call_id, {})
+                paths = tool_paths(u) or call.get("paths", [])
+                call["paths"] = paths
+                if kind == "tool_call":
+                    log(f"tool: {u.get('kind')} {u.get('title')!r} {u.get('status') or ''}")
+                if u.get("status") == "failed":
+                    log(f"tool failed: {call_id} paths={json.dumps(paths)}: {tool_failure_reason(u)}")
+                if u.get("status") in ("completed", "failed"):
+                    self.tool_calls.pop(call_id, None)
 
     def on_permission(self, msg):
         p = msg["params"]
@@ -281,8 +339,11 @@ def run(s):
     if model:
         s.request("session/set_config_option", {"sessionId": sid, "configId": "model", "value": model})
     with open(brief_path) as f:
-        result = s.request("session/prompt", {"sessionId": sid, "prompt": [{"type": "text", "text": f.read()}]},
-                           watch=STALL)
+        brief = f.read()
+    if mode != "write":
+        brief = READ_GUIDANCE + "\n" + brief
+    result = s.request("session/prompt", {"sessionId": sid, "prompt": [{"type": "text", "text": brief}]},
+                       watch=STALL)
     log(f"stop: {result.get('stopReason')}")
     code = 0 if result.get("stopReason") == "end_turn" else 3
     # Quota and capacity errors come back as the whole answer, not as an error.

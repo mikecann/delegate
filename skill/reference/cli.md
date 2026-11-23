@@ -80,6 +80,11 @@ env -u CLAUDE_CONFIG_DIR claude auth status    # ~/.claude
 - Gemini `Generate content input tokens per minute limit exceeded on Tier 1`: the key's per-minute rate limit (2M input tokens a minute), not the spend cap or the credit, so it's no reason to bother Mike or look at a bigger plan. `gemini_seat` waits these out through gemini-wait.py, and `wait-<name>.log` shows each wait. If one still kills a seat, the waits ran out (12 in a row) or the 429 wasn't marked per-minute: check the log, and fix gemini-wait.py rather than rerunning blind. A seat that waits a lot runs long, so give big reviews `LIMIT=3600`.
 - Antigravity `exit 4`: the agent answered with a capacity or quota error (the free plan did this often). Try another model, or send a fix review to `gemini_seat`.
 - Antigravity `exit NOLOGIN`: not installed or not signed in. Run `agy_login` (above).
+- Antigravity `tool failed:` lines include requested file paths and a classified reason;
+  returned file bodies and arbitrary error output stay out of the log. `path does not
+  exist` means discover the filename with one plain `ls` or `grep` command. A path that
+  resolves outside the workspace can be a dependency symlink: copy the needed source
+  into the scratch worktree or paste it into the brief, keeping the read-only lock.
 - Gemini `exit NOPROXY`: gemini-wait.py didn't start (it runs on `/usr/bin/python3`).
 - Gemini `FAILED <name> (Gemini API spend cap hit, ...)`: Google answered 403 "Spend cap breached". The key's US$90 monthly cap is used up (it was from 19 Nov 2026 until it reset on 1 Dec). Every call fails until the month turns or Mike raises the cap, so use `agy_seat` and tell Mike. Never raise it yourself.
 - Other Gemini errors about billing, quota or a paused service: the spend cap or the prepaid credit ran out. Don't raise either; tell Mike (cap: [Budgets and caps](https://console.cloud.google.com/billing/017432-88C7C0-85D05A/budgets), credit: [AI Studio billing](https://aistudio.google.com/billing?billing=017432-88C7C0-85D05A)).
