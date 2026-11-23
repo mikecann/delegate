@@ -95,6 +95,36 @@ class StallTest(unittest.TestCase):
         self.assertEqual(self.out, "half an answer")
         self.assertEqual(self.left_running(), [])
 
+    def test_harness_crash_reported_as_end_turn_is_not_a_review(self):
+        failure = pathlib.Path(HERE, "fixtures", "agy-harness-exit1006.txt").read_text()
+        self.assertEqual(self.run_client(FAKE_PROMPT="answer", FAKE_ANSWER=failure, FAKE_CHUNK_SIZE="17"), 6, self.err)
+        self.assertEqual(self.out, failure)
+        self.assertEqual(self.servers_started(), 1)
+        self.assertIn("agent execution failed", self.err)
+        self.assertEqual(self.left_running(), [])
+
+    def test_proxy_request_failure_reported_as_end_turn_is_not_a_review(self):
+        failure = 'received model response error: doRequest: error sending request: Post "http://127.0.0.1:60752/v1beta/models/gemini-4-neon-high:streamGenerateContent?alt=sse": context canceled'
+        self.assertEqual(self.run_client(FAKE_PROMPT="answer", FAKE_ANSWER=failure), 6, self.err)
+        self.assertEqual(self.out, failure)
+
+    def test_valid_review_quoting_the_harness_error_still_succeeds(self):
+        failure = pathlib.Path(HERE, "fixtures", "agy-harness-exit1006.txt").read_text()
+        answer = "P2: the runner counts a harness crash as a completed review. The log was:\n\n```text\n" + failure + "\n```"
+        self.assertEqual(self.run_client(FAKE_PROMPT="answer", FAKE_ANSWER=answer), 0, self.err)
+        self.assertEqual(self.out, answer)
+        self.assertNotIn("agent execution failed", self.err)
+
+    def test_seats_wait_rejects_nonempty_harness_failure_output(self):
+        run = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, run, True)
+        pathlib.Path(run, "status").write_text("gemini exit 6\n")
+        pathlib.Path(run, "out-gemini.md").write_text("Agent execution error: Harness process exited unexpectedly (WS close code 1006).")
+        p = subprocess.run(["zsh", "-c", 'source "$1"; RUN=$2; seats_wait', "zsh", SEATS, run],
+                           capture_output=True, text=True, timeout=30)
+        self.assertIn("FAILED  gemini (exit 6", p.stdout)
+        self.assertNotIn("ok      gemini", p.stdout)
+
     def test_seats_wait_names_a_stall(self):
         run = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, run, True)

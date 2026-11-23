@@ -69,5 +69,8 @@ for line in sys.stdin:
             for _ in range(int(os.environ.get("FAKE_SECONDS", "5"))):
                 update({"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "."}})
                 time.sleep(1)
-        update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": f"answer from server {n}"}})
+        answer = os.environ.get("FAKE_ANSWER", f"answer from server {n}")
+        size = int(os.environ.get("FAKE_CHUNK_SIZE", "0")) or len(answer)
+        for start in range(0, len(answer), size):
+            update({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": answer[start:start + size]}})
         send({"jsonrpc": "2.0", "id": rid, "result": {"stopReason": "end_turn"}})

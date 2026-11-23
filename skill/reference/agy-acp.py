@@ -73,6 +73,7 @@ ALLOW = {"read"} | ({"search", "fetch"} if mode == "research" else set())
 # twice that. Below about 1260 s of LIMIT (the default 900, say) it can't fire at all.
 STALL = float(os.environ.get("AGY_STALL") or 1200)
 STALLED = 5
+AGENT_FAILED = 6
 # agy_seat passes its LIMIT, so a retry that couldn't get a full stall window before
 # timeout(1) ends it isn't started: the seat stops as STALLED rather than 124.
 LIMIT = float(os.environ.get("AGY_LIMIT") or 0)
@@ -263,11 +264,16 @@ def run(s):
         result = s.request("session/prompt", {"sessionId": sid, "prompt": [{"type": "text", "text": f.read()}]})
     log(f"stop: {result.get('stopReason')}")
     code = 0 if result.get("stopReason") == "end_turn" else 3
-    # Quota and capacity errors come back as the whole answer, not as an error.
-    if code == 0 and re.match(r"(No capacity available|Quota exceeded|You have exhausted|RESOURCE_EXHAUSTED)",
-                              "".join(s.answer).strip()):
-        log("agent error: " + "".join(s.answer).strip()[:500])
+    # Some server failures arrive as turn text with end_turn rather than a JSON-RPC
+    # error. Match the server's terminal diagnostic at the start, not a quoted error
+    # inside an otherwise valid review. Keep the diagnostic in out_path for inspection.
+    answer = "".join(s.answer).strip()
+    if code == 0 and re.match(r"(No capacity available|Quota exceeded|You have exhausted|RESOURCE_EXHAUSTED)", answer):
+        log("agent error: " + answer[:500])
         code = 4
+    if code == 0 and re.match(r"(Agent execution error: Harness process exited unexpectedly|received model response error: doRequest: error sending request:)", answer):
+        log("agent execution failed: " + answer[:500])
+        code = AGENT_FAILED
     return code
 
 
