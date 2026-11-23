@@ -12,16 +12,19 @@
 #   WRITE     set to 1 to drop the locks, in a worktree or scratch folder only
 #   LIMIT     seconds before a seat is killed, default 900
 #
-# Every seat runs under taskpolicy -b (macOS background priority, throttled CPU and disk),
-# and whatever it spawns inherits that. A Codex reviewer ran xcodebuild in its worktree on
-# 5 Nov 2026 and loaded Mike's M5 for ten minutes at full priority. Logins still work under
-# it: Codex's ChatGPT login and Claude's keychain login were both tested that day.
+# Read-only seats use utility QoS: taskpolicy -b can starve their startup and network I/O
+# (23 Nov 2026: an unauthenticated HTTPS probe took 7.3 s versus 0.35 s at utility, before
+# counting delayed process startup). Write seats keep -b, inherited by anything they
+# start, because a Codex reviewer ran xcodebuild at full priority on 5 Nov 2026.
 
 # A thread's environment carries its own login and session (CLAUDE_CONFIG_DIR,
 # CLAUDE_EFFORT and more), so a child claude would bill the thread's account without this.
 # Don't use env -i: wiping everything breaks Codex's ChatGPT login.
 _seats_dir=${${(%):-%x}:A:h}
 _seat_clean() { env $(env | awk -F= '/^(CLAUDE|ANTHROPIC)/ {printf "-u %s ", $1}') "$@"; }
+_seat_priority() {
+  if [[ -n $WRITE ]]; then print -l -- -b; else print -l -- -c utility; fi
+}
 
 # claude_seat <name> <account> <model> <effort>
 # account: a login folder name (claude-1, claude-2, claude-3, claude-4), or "main" for
@@ -32,13 +35,13 @@ _seat_clean() { env $(env | awk -F= '/^(CLAUDE|ANTHROPIC)/ {printf "-u %s ", $1}
 # still ran. --tools removes the tools, and --strict-mcp-config removes Gmail, Notion and
 # the rest, which --tools leaves in place.
 claude_seat() {
-  local name=$1 account=$2 model=$3 effort=$4 cfg=() lock=()
+  local name=$1 account=$2 model=$3 effort=$4 cfg=() lock=() priority=($(_seat_priority))
   [[ $account != main ]] && cfg=("CLAUDE_CONFIG_DIR=$HOME/Library/Application Support/Token Stats/Accounts/$account")
   if [[ -z $WRITE ]]; then
     lock=(--tools "Read,Glob,Grep${RESEARCH:+,WebSearch,WebFetch}")
   fi
   (
-    cd "$DIR" && _seat_clean $cfg taskpolicy -b timeout ${LIMIT:-900} claude -p --model "$model" --effort "$effort" \
+    cd "$DIR" && _seat_clean $cfg taskpolicy $priority timeout ${LIMIT:-900} claude -p --model "$model" --effort "$effort" \
       $lock --strict-mcp-config --no-session-persistence \
       < "$RUN/brief-$name.md" > "$RUN/out-$name.md" 2> "$RUN/err-$name.log"
     echo "$name exit $?" >> "$RUN/status"
@@ -50,7 +53,8 @@ claude_seat() {
 # commands still run inside a sandbox that blocks writes and some binaries (ps), and a
 # reviewer can still start a build (xcodebuild, 5 Nov 2026). --disable shell_tool
 # --disable unified_exec does stop shell, but then it can't read files either (tested
-# 5 Nov), so the brief tells reviewers not to build, and taskpolicy -b keeps it light.
+# 5 Nov), so the brief tells reviewers not to build. Utility QoS keeps read-only jobs
+# below interactive work without starving their network I/O; write jobs keep -b.
 # Read-only doesn't stop connectors either, and -c 'mcp_servers={}' doesn't remove them.
 # --ignore-user-config drops config.toml's servers (the login still works), and the two
 # --disable flags drop the app and plugin ones.
@@ -70,11 +74,11 @@ _codex_bin() {
 }
 
 codex_seat() {
-  local name=$1 model=$2 effort=$3 sandbox=read-only bin
+  local name=$1 model=$2 effort=$3 sandbox=read-only bin priority=($(_seat_priority))
   [[ -n $WRITE ]] && sandbox=workspace-write
   bin=$(_codex_bin 2>>"$RUN/err-$name.log") || { echo "$name exit NOCODEX" >> "$RUN/status"; return; }
   (
-    taskpolicy -b timeout ${LIMIT:-900} "$bin" exec --ignore-user-config --disable apps --disable plugins \
+    taskpolicy $priority timeout ${LIMIT:-900} "$bin" exec --ignore-user-config --disable apps --disable plugins \
       -m "$model" -c "model_reasoning_effort=\"$effort\"" -s $sandbox --skip-git-repo-check \
       -C "$DIR" -o "$RUN/out-$name.md" - < "$RUN/brief-$name.md" >> "$RUN/err-$name.log" 2>&1
     echo "$name exit $?" >> "$RUN/status"
@@ -87,12 +91,12 @@ codex_seat() {
 # with just a warning on stderr. So the warning is checked after the run. search_tool and
 # use_tool are how it reaches connectors, so they go too.
 grok_seat() {
-  local name=$1 model=$2 effort=$3 lock=()
+  local name=$1 model=$2 effort=$3 lock=() priority=($(_seat_priority))
   if [[ -z $WRITE ]]; then
     lock=(--tools "read_file,grep,list_dir${RESEARCH:+,web_search,web_fetch}" --disallowed-tools use_tool,search_tool)
   fi
   (
-    taskpolicy -b timeout ${LIMIT:-900} grok --prompt-file "$RUN/brief-$name.md" -m "$model" --effort "$effort" $lock \
+    taskpolicy $priority timeout ${LIMIT:-900} grok --prompt-file "$RUN/brief-$name.md" -m "$model" --effort "$effort" $lock \
       --cwd "$DIR" > "$RUN/out-$name.md" 2> "$RUN/err-$name.log" < /dev/null
     local code=$?
     grep -q 'name no tool' "$RUN/err-$name.log" && code=UNLOCKED
@@ -123,7 +127,7 @@ grok_seat() {
 # 2026), so a locked seat on 1 refuses a DIR with plugins up the tree.
 # OPENCODE_BIN: another OpenCode to try (tests).
 opencode_seat() {
-  local name=$1 model=$2 effort=$3 oc=${OPENCODE_BIN:-~/.opencode/bin/opencode} run=()
+  local name=$1 model=$2 effort=$3 oc=${OPENCODE_BIN:-~/.opencode/bin/opencode} run=() priority=($(_seat_priority))
   local cfg='{"permission":{"*":"deny","read":"allow","grep":"allow","glob":"allow","list":"allow"RESEARCH_TOOLS},"mcp":{},"plugins":["-*","opencode.*"]}'
   cfg=${cfg/RESEARCH_TOOLS/${RESEARCH:+,\"webfetch\":\"allow\",\"websearch\":\"allow\"}}
   [[ -n $WRITE ]] && cfg='{"mcp":{},"plugins":["-*","opencode.*"]}'
@@ -149,7 +153,7 @@ opencode_seat() {
     local empty; empty=$(mktemp -d "${TMPDIR:-/tmp}/delegate-opencode-config.XXXXXX") || exit 1
     cd "$DIR" && env OPENCODE_PURE=1 OPENCODE_DISABLE_PROJECT_CONFIG=1 OPENCODE_CONFIG_PROJECT_DISABLE=1 OPENCODE_CONFIG_DIR="$empty" OPENCODE_CONFIG= \
       OPENCODE_DISABLE_CLAUDE_CODE=1 OPENCODE_CONFIG_CONTENT="$cfg" \
-      taskpolicy -b timeout ${LIMIT:-900} "$oc" $run \
+      taskpolicy $priority timeout ${LIMIT:-900} "$oc" $run \
       "$(< "$RUN/brief-$name.md")" < /dev/null > "$RUN/out-$name.md" 2> "$RUN/err-$name.log"
     local code=$?
     rm -rf "$empty"
@@ -279,7 +283,7 @@ agy_login() {
     ~/.delegate/agy-acp/$AGY_VERSION/agy_acp_server.par login
 }
 agy_seat() {
-  local name=$1 model=$2 bin=~/.delegate/agy-acp/$AGY_VERSION mode=ro home=~/.gemini
+  local name=$1 model=$2 bin=~/.delegate/agy-acp/$AGY_VERSION mode=ro home=~/.gemini priority=($(_seat_priority))
   [[ -n $RESEARCH ]] && mode=research
   [[ -n $WRITE ]] && mode=write
   if ! _agy_signed $bin/agy_acp_server.par || ! _agy_signed $bin/localharness_external \
@@ -289,7 +293,7 @@ agy_seat() {
     return 1
   fi
   (
-    _agy_env BROWSER=/usr/bin/false AGY_LIMIT=${LIMIT:-900} ${AGY_STALL:+AGY_STALL=$AGY_STALL} taskpolicy -b timeout ${LIMIT:-900} /usr/bin/python3 -I $_seats_dir/agy-acp.py $bin/agy_acp_server.par \
+    _agy_env BROWSER=/usr/bin/false AGY_LIMIT=${LIMIT:-900} ${AGY_STALL:+AGY_STALL=$AGY_STALL} taskpolicy $priority timeout ${LIMIT:-900} /usr/bin/python3 -I $_seats_dir/agy-acp.py $bin/agy_acp_server.par \
       "$DIR" "$RUN/brief-$name.md" "$RUN/out-$name.md" "$model" $mode 2> "$RUN/err-$name.log"
     local code=$?
     [[ $code == 5 ]] && code=STALLED
