@@ -124,7 +124,7 @@ ALLOW = {"read"} | ({"search", "fetch"} if mode == "research" else set())
 # made no tool calls sent nothing for 271 s, then streamed its answer, and a replay of the
 # hung review (64 KB brief, under taskpolicy -b alongside other seats) went 591 s without an
 # event before its next tool call and then finished normally after 22 minutes. 1200 s is
-# twice that. Below about 1260 s of LIMIT (the default 900, say) it can't fire at all.
+# twice that. With the default LIMIT=900 the overall timeout ends it first.
 STALL = float(os.environ.get("AGY_STALL") or 1200)
 # The handshake before the prompt should answer in seconds. On 23 Nov 2026 reviews sat
 # 1229 s in initialize before the prompt-sized window fired, then waited it out again on the
@@ -142,6 +142,12 @@ stop_state = {"starting": False, "code": None}
 
 def log(msg):
     print(msg, file=sys.stderr, flush=True)
+
+
+if not (login or models or usage) and LIMIT and LIMIT <= STALL:
+    log(f"watchdog: LIMIT={LIMIT:g}s ends before the {STALL:g}s prompt silence watchdog. "
+        "Exit 124 is the overall limit, not evidence that the agent stalled. "
+        "Give a long review more LIMIT, or set AGY_STALL deliberately.")
 
 
 class Stalled(Exception):

@@ -295,6 +295,8 @@ _gemini_cost() {
 # A session that goes quiet (no event from the server for AGY_INIT_STALL seconds during the
 # handshake, AGY_STALL once the prompt is sent) is ended and retried once from scratch inside agy-acp.py; a second stall ends the seat as STALLED, and
 # so does a first one when LIMIT has no room for a retry or it's a WRITE job.
+# Prompt AGY_STALL defaults to 1200s; default LIMIT=900s ends first. Use LIMIT=3600 for
+# a large fix review, so silence can end as STALLED instead of the overall limit.
 # Pinned to 1.4.5: 1.5.0's session/new never answers on this Mac (19 Nov 2026).
 # Not signed in: agy_login, see cli.md.
 AGY_VERSION=1.4.5

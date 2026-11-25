@@ -47,6 +47,12 @@ class StallTest(unittest.TestCase):
                 pass
         return left
 
+    def test_short_limit_explains_why_the_default_watchdog_cannot_fire(self):
+        self.assertEqual(self.run_client(FAKE_PROMPT="answer", AGY_STALL="", AGY_LIMIT="900"), 0, self.err)
+        self.assertIn("LIMIT=900s ends before the 1200s prompt silence watchdog", self.err)
+        self.assertIn("not evidence that the agent stalled", self.err)
+        self.assertEqual(self.out, "answer from server 1")
+
     def test_quiet_twice_gives_up_with_its_own_exit(self):
         self.assertEqual(self.run_client(FAKE_PROMPT="quiet"), 5, self.err)
         self.assertIn("Retrying once", self.err)
