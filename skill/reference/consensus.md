@@ -6,7 +6,7 @@ Send one question to a panel from different labs. Each answers alone in a fixed 
 
 Each seat is one line in the run script ([cli.md](cli.md)), using the models and efforts from SKILL.md.
 
-- **Default:** Codex (`gpt-6.1-sol`), Gemini (`gemini-4-neon` on `agy_seat`, or `gemini_seat` if that fails), Grok (`grok-4.7`) and Opus on a personal Claude account with room, and adding Fable or `gpt-6-astra` as a fourth seat is worth it. Chair: a fresh Fable seat (`claude-fable-5-1`) on a personal Claude account with room.
+- **Default:** Codex (`gpt-6.1-sol`), Gemini (`gemini-4-neon` on `gemini_seat` for Threadbear work, or `agy_seat` for other personal work), Grok (`grok-4.7`) and Opus on a personal Claude account with room, and adding Fable or `gpt-6-astra` as a fourth seat is worth it. Chair: a fresh Fable seat (`claude-fable-5-1`) on a personal Claude account with room.
 - **Big decisions (wide):** all of those plus extra seats: Fable as well as Opus on the Claude accounts (spread across `claude-main`, `claude-1` and `claude-3` by room), and a second Codex model (`gpt-6-astra`) if you think it adds something. Mike is happy to try as many model combinations as possible, so go wide for anything that matters. The chair is still a separate, fresh seat, even if its account also answered.
 - **Convex folders:** only `claude-2` is allowed, so the panel is Fable, Opus and Sonnet on it (`claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5`), and the chair is a fresh Opus seat on it. If Mike explicitly asks for other labs, follow "The Convex rule" in SKILL.md: Claude seats and the chair stay on `claude-2`, and other labs get only what's public or generalised.
 - Skip any account with under 10% room, as usual. You need at least two answers to compare.

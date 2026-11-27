@@ -213,12 +213,11 @@ opencode_seat() {
 }
 
 # gemini_seat <name> <model> <effort>
-# Google's models on Mike's own Gemini API key, through OpenCode with opencode_seat's lock.
-# The fallback Gemini seat: agy_seat (below) is the default, on Mike's Google plan.
-# The key is the "Delegate reviews (M5)" key in AI Studio project Gemini Reviews
-# (gen-lang-client-0128847654), billed to the Convex billing account (Convex Ramp card) with
-# prepay and a US$90/month spend cap that pauses the API. model is a Gemini API name such as
-# gemini-4-neon. The brief gets the reading budget below appended, and the run's cost lands in
+# Google's models on Convex's "internal coding tools" Gemini API key (from Gautam Gupta,
+# 27 Nov 2026), through OpenCode with opencode_seat's lock. Used for Convex and Threadbear
+# reviews; agy_seat (below, Mike's personal Google AI Ultra plan) stays for other personal
+# repos. model is a Gemini API name such as gemini-4-neon. The brief gets the reading budget
+# below appended, and the run's cost lands in
 # cost-<name>.txt. The key only reaches OpenCode through the environment of this seat's own
 # subshell.
 # Tier 1 allows 2M input tokens a minute, and a review that reads a lot of files resends a

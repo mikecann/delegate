@@ -30,8 +30,8 @@ claude_seat <name> main|claude-1|claude-2|claude-3 <model> <effort>
 codex_seat  <name> <model> <effort>
 grok_seat   <name> <model> <effort>
 opencode_seat <name> opencode/<model> <effort>   # effort is low, high or max
-agy_seat    <name> <model>            # the Gemini default: Google's Antigravity agent on Mike's Google plan, e.g. gemini-4-neon
-gemini_seat <name> <model> <effort>   # the Gemini fallback, e.g. gemini-4-neon high; OpenCode's lock, the paid Gemini API key
+gemini_seat <name> <model> <effort>   # Convex & Threadbear Gemini reviews, e.g. gemini-4-neon high; OpenCode's lock, Convex's Gemini API key
+agy_seat    <name> <model>            # other/personal Gemini runs: Google's Antigravity agent on Mike's Google plan, e.g. gemini-4-neon
 ```
 
 Any mix of seats in one script runs in parallel. The script can set `LIMIT` (seconds per seat) above the `source` line.
@@ -76,9 +76,9 @@ env -u CLAUDE_CONFIG_DIR claude auth status    # ~/.claude
 - `FAILED <name> (stalled ...)`, status `exit STALLED`: an `agy_seat` got no event from the agent for 20 minutes twice, or for 2 minutes during the handshake before the prompt (`initialize`, `session/new`), which should answer in seconds (agy-acp.py retries once from a fresh server first, unless it's a `WRITE` job or `LIMIT` has no room for another window of the phase that stalled; `err-<name>.log` has a `stalled:` line for each, naming the request). A healthy review can be silent for 10 minutes while it thinks (measured 20 Nov 2026), hence 20. With the default `LIMIT` of 900 only the handshake watch can fire first; the 20-minute one matters for `LIMIT=3600` jobs like fix reviews. On 20 Nov 2026 one review went quiet like this after a refused command and sat idle for 39 minutes until it was killed by hand. Carry on without it. `AGY_STALL` and `AGY_INIT_STALL` (seconds) change the prompt and handshake waits for one script. On 23 Nov 2026 reviews sat 20 minutes in `initialize`, twice, before the handshake got its own window.
 - A seat that exits 0 with an empty answer counts as failed. Look in `err-<name>.log`. Codex's answer is in `out-<name>.md` and everything else it prints is in the log.
 - OpenCode `401 api_key_expired`: its Zen key has run out. Mike makes a new one at opencode.ai/console/account#api-keys (Default Chrome profile, model request and usage read access only) and it goes into `~/.local/share/opencode/auth.json` under `opencode.key`.
-- Gemini `exit NOKEY`: `~/.config/gemini/api-key` is missing. The key is "Delegate reviews (M5)" in [AI Studio](https://aistudio.google.com/apikey) (project Gemini Reviews, Mike's personal Google account). Its copy button puts it on the clipboard only while Chrome is frontmost, and new keys start `AQ.`, not `AIza`.
+- Gemini `exit NOKEY`: `~/.config/gemini/api-key` is missing. Since 27 Nov 2026 it holds Convex's "internal coding tools" Gemini API key from Gautam Gupta (starts `AQ.`). Ask Mike to restore it via `ask_secret` rather than recreating a key yourself.
 - Gemini `Generate content input tokens per minute limit exceeded on Tier 1`: the key's per-minute rate limit (2M input tokens a minute), not the spend cap or the credit, so it's no reason to bother Mike or look at a bigger plan. `gemini_seat` waits these out through gemini-wait.py, and `wait-<name>.log` shows each wait. If one still kills a seat, the waits ran out (12 in a row) or the 429 wasn't marked per-minute: check the log, and fix gemini-wait.py rather than rerunning blind. A seat that waits a lot runs long, so give big reviews `LIMIT=3600`.
-- Antigravity `exit 4`: the agent answered with a capacity or quota error (the free plan did this often). Try another model, or send a fix review to `gemini_seat`.
+- Antigravity `exit 4`: the agent answered with a capacity or quota error (the free plan did this often). Try another model, or send a Convex/Threadbear review to `gemini_seat` (leave other personal repos on Codex rather than billing Convex's key).
 - Antigravity `exit NOLOGIN`: not installed or not signed in. Run `agy_login` (above).
 - Antigravity `tool failed:` lines include requested file paths and a classified reason;
   returned file bodies and arbitrary error output stay out of the log. `path does not
@@ -86,7 +86,7 @@ env -u CLAUDE_CONFIG_DIR claude auth status    # ~/.claude
   resolves outside the workspace can be a dependency symlink: copy the needed source
   into the scratch worktree or paste it into the brief, keeping the read-only lock.
 - Gemini `exit NOPROXY`: gemini-wait.py didn't start (it runs on `/usr/bin/python3`).
-- Gemini `FAILED <name> (Gemini API spend cap hit, ...)`: Google answered 403 "Spend cap breached". The key's US$90 monthly cap is used up (it was from 19 Nov 2026 until it reset on 1 Dec). Every call fails until the month turns or Mike raises the cap, so use `agy_seat` and tell Mike. Never raise it yourself.
-- Other Gemini errors about billing, quota or a paused service: the spend cap or the prepaid credit ran out. Don't raise either; tell Mike (cap: [Budgets and caps](https://console.cloud.google.com/billing/017432-88C7C0-85D05A/budgets), credit: [AI Studio billing](https://aistudio.google.com/billing?billing=017432-88C7C0-85D05A)).
+- Gemini `FAILED <name> (Gemini API spend cap hit, ...)`: Google answered 403 "Spend cap breached". Tell Mike rather than raising any cap yourself; for Threadbear or personal work you can fall back to `agy_seat` meanwhile.
+- Other Gemini errors about billing, quota or a paused service: tell Mike (the key is Convex's "internal coding tools" key from Gautam Gupta; never raise caps or top up billing yourself).
 - Claude's `MCP servers blocked by enterprise policy` warning on `claude-2` is normal too.
 - Claude's `SessionStart` hooks and global instructions still load on a locked seat, which is why the brief opens with the delegate preamble.
